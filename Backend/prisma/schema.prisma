@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//User
+model User {
+  user_id       Int      @id @default(autoincrement())
+  name          String   @db.VarChar(256)
+  email         String   @unique @db.VarChar(256)
+  password      String   @db.VarChar(256)
+  role          Role     @default(investor)
+  wallet_address String? @db.VarChar(256)
+  cnic           String  @unique @db.VarChar(15)
+  phone_number   String? @db.VarChar(15)
+  address        String? @db.VarChar(256)
+  dob            DateTime? @db.Date
+  profile_pic    String? @db.VarChar(256)
+  account_details String? @db.VarChar(256)
+  kyc_verified    Boolean @default(false)
+
+  // Relations
+  properties          Property[]          // owned properties
+  investments         Investment[]        // investor investments
+  profit_distributions ProfitDistribution[]
+  documents_verified  Document[]          // as regulator
+  verification_logs    VerificationLog[]  // as regulator
+  transaction_logs     TransactionLog[]
+  compliance_verified  ComplianceRecord[] // as regulator
+  notifications        Notification[]
+
+  @@map("users")
+}
+
+
+enum Role {
+  owner
+  investor
+  regulator
+}
+
+//Property
+model Property {
+  property_id       Int       @id @default(autoincrement())
+  owner_id          Int
+  title             String     @db.VarChar(256)
+  location          String     @db.VarChar(256)
+  description       String?    @db.Text
+  valuation         Decimal    @db.Decimal(15, 2)
+  verification_status VerificationStatus @default(pending)
+  created_at        DateTime   @default(now())
+  image_folder_path String     @db.VarChar(256)
+
+  // Relations
+  owner User @relation(fields: [owner_id], references: [user_id])
+  documents Document[]
+  sukuks    Sukuk[]
+  verification_logs VerificationLog[]
+
+  @@map("properties")
+}
+
+
+enum VerificationStatus {
+  pending
+  approved
+  rejected
+}
+
+//Document
+model Document {
+  document_id        Int       @id @default(autoincrement())
+  property_id        Int
+  file_hash          String    @db.VarChar(256)
+  file_name          String    @db.VarChar(256)
+  file_type          String    @db.VarChar(50)
+  uploaded_at        DateTime  @default(now())
+  verified_by        Int?      // Nullable regulator user ID
+  verification_status VerificationStatusDoc @default(pending)
+  file_path          String    @db.VarChar(256) // Actual path to file/folder
+
+  // Relations
+  property Property @relation(fields: [property_id], references: [property_id])
+  regulator User?   @relation(fields: [verified_by], references: [user_id])
+
+  @@map("documents")
+}
+
+enum VerificationStatusDoc {
+  pending
+  verified
+  rejected
+}
+
+//Sukuk
+model Sukuk {
+  sukuk_id        Int       @id @default(autoincrement())
+  property_id     Int
+  total_tokens    Int
+  token_price     Decimal   @db.Decimal(15,4)
+  roi_percent     Decimal?  @db.Decimal(5,2)
+  maturity_date   DateTime? @db.Date
+  blockchain_hash String?   @db.VarChar(256)
+  status          SukukStatus @default(active)
+  issued_at       DateTime  @default(now())
+
+  // Relations
+  property Property @relation(fields: [property_id], references: [property_id])
+  investments Investment[]
+  profit_distributions ProfitDistribution[]
+  transaction_logs TransactionLog[]
+  compliance_records ComplianceRecord[]
+
+  @@map("sukuks")
+}
+
+enum SukukStatus {
+  active
+  matured
+  redeemed
+}
+
+//Investment
+model Investment {
+  investment_id  Int       @id @default(autoincrement())
+  investor_id    Int
+  sukuk_id       Int
+  tokens_owned   Int
+  purchase_value Decimal   @db.Decimal(10,2)
+  tx_hash        String?   @db.VarChar(256)
+  purchase_date  DateTime  @default(now())
+
+  // Relations
+  investor User   @relation(fields: [investor_id], references: [user_id])
+  sukuk    Sukuk  @relation(fields: [sukuk_id], references: [sukuk_id])
+
+  @@map("investments")
+}
+
+//Profit Distribution
+model ProfitDistribution {
+  distribution_id Int       @id @default(autoincrement())
+  sukuk_id       Int
+  investor_id    Int
+  amount         Decimal   @db.Decimal(10,2)
+  tx_hash        String    @db.VarChar(256)
+  distributed_at DateTime? 
+
+  // Relations
+  sukuk    Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
+  investor User  @relation(fields: [investor_id], references: [user_id])
+
+  @@map("profit_distributions")
+}
+
+//Verification Log
+model VerificationLog {
+  log_id      Int       @id @default(autoincrement())
+  property_id Int
+  regulator_id Int
+  status      VerificationStatusLog
+  comments    String?   @db.Text
+  timestamp   DateTime  @default(now())
+
+  // Relations
+  property  Property @relation(fields: [property_id], references: [property_id])
+  regulator User     @relation(fields: [regulator_id], references: [user_id])
+
+  @@map("verification_logs")
+}
+
+enum VerificationStatusLog {
+  approved
+  rejected
+}
+
+//Transaction Log
+model TransactionLog {
+  transaction_id Int       @id @default(autoincrement())
+  user_id        Int
+  sukuk_id       Int
+  type           TransactionType
+  amount         Decimal   @db.Decimal(15,2)
+  tx_hash        String?   @db.VarChar(256)
+  timestamp      DateTime  @default(now())
+
+  // Relations
+  user  User  @relation(fields: [user_id], references: [user_id])
+  sukuk Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
+
+  @@map("transaction_logs")
+}
+
+enum TransactionType {
+  buy
+  sell
+  profit
+  redeem
+}
+
+//Compliance Record
+model ComplianceRecord {
+  compliance_id  Int       @id @default(autoincrement())
+  sukuk_id       Int
+  rule_applied   String    @db.VarChar(256)
+  verified_by    Int
+  compliance_status ComplianceStatus @default(pending)
+  comments       String?   @db.Text
+  timestamp      DateTime  @default(now())
+
+  // Relations
+  sukuk    Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
+  regulator User  @relation(fields: [verified_by], references: [user_id])
+
+  @@map("compliance_records")
+}
+
+enum ComplianceStatus {
+  approved
+  pending
+  violated
+}
+
+//Notification
+model Notification {
+  notification_id Int       @id @default(autoincrement())
+  user_id         Int
+  message         String    @db.Text
+  type            NotificationType
+  is_read         Boolean   @default(false)
+  created_at      DateTime  @default(now())
+
+  // Relation
+  user User @relation(fields: [user_id], references: [user_id])
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  verification
+  profit
+  transaction
+  system
+}
+
