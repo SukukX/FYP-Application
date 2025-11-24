@@ -1,11 +1,10 @@
-// user.routes.ts
-
 import { Router } from "express";
+import { getProfile, updateProfile } from "../controllers/user.controller";
+import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
 
-router.get("/", (req, res) => {
-  res.json({ message: "User routes working" });
-});
+router.get("/profile", authenticate, getProfile);
+router.patch("/profile", authenticate, updateProfile);
 
 export default router;
