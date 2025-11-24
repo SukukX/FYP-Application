@@ -7,85 +7,177 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//User
+// User & Auth
 model User {
   user_id       Int      @id @default(autoincrement())
   name          String   @db.VarChar(256)
   email         String   @unique @db.VarChar(256)
   password      String   @db.VarChar(256)
   role          Role     @default(investor)
-  wallet_address String? @db.VarChar(256)
-  cnic           String  @unique @db.VarChar(15)
-  phone_number   String? @db.VarChar(15)
-  address        String? @db.VarChar(256)
-  dob            DateTime? @db.Date
-  profile_pic    String? @db.VarChar(256)
-  account_details String? @db.VarChar(256)
-  kyc_verified    Boolean @default(false)
+  phone_number  String?  @db.VarChar(15)
+  country       String?  @db.VarChar(100)
+  address       String?  @db.VarChar(256)
+  dob           DateTime? @db.Date
+  profile_pic   String?  @db.VarChar(256)
+  cnic          String?  @unique @db.VarChar(15)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
   // Relations
-  properties          Property[]          // owned properties
-  investments         Investment[]        // investor investments
+  wallets             Wallet[]
+  kyc_request         KYCRequest?
+  mfa_setting         MFASetting?
+  sessions            Session[]
+  notifications       Notification[]
+  audit_logs          AuditLog[]
+  
+  // Investor relations
+  investments         Investment[]
   profit_distributions ProfitDistribution[]
-  documents_verified  Document[]          // as regulator
-  verification_logs    VerificationLog[]  // as regulator
-  transaction_logs     TransactionLog[]
-  compliance_verified  ComplianceRecord[] // as regulator
-  notifications        Notification[]
+  transaction_logs    TransactionLog[]
+
+  // Owner relations
+  properties          Property[]
+
+  // Regulator relations
+  documents_verified  Document[]
+  verification_logs   VerificationLog[]
+  compliance_verified ComplianceRecord[]
 
   @@map("users")
 }
 
-
 enum Role {
-  owner
+  guest
   investor
+  owner
+  admin
   regulator
 }
 
-//Property
+model Wallet {
+  wallet_id      Int      @id @default(autoincrement())
+  user_id        Int
+  wallet_address String   @unique @db.VarChar(256)
+  chain_id       Int?     // e.g. 1 for Mainnet, 11155111 for Sepolia
+  is_primary     Boolean  @default(false)
+  created_at     DateTime @default(now())
+
+  user           User     @relation(fields: [user_id], references: [user_id])
+
+  @@map("wallets")
+}
+
+model MFASetting {
+  mfa_id         Int      @id @default(autoincrement())
+  user_id        Int      @unique
+  is_enabled     Boolean  @default(false)
+  secret         String?  @db.VarChar(256) // Encrypted TOTP secret
+  backup_codes   String[] // Array of hashed backup codes
+  updated_at     DateTime @updatedAt
+
+  user           User     @relation(fields: [user_id], references: [user_id])
+
+  @@map("mfa_settings")
+}
+
+model Session {
+  session_id     String   @id @default(uuid())
+  user_id        Int
+  refresh_token  String   @unique
+  user_agent     String?
+  ip_address     String?
+  expires_at     DateTime
+  created_at     DateTime @default(now())
+  is_valid       Boolean  @default(true)
+
+  user           User     @relation(fields: [user_id], references: [user_id])
+
+  @@map("sessions")
+}
+
+// KYC Module
+model KYCRequest {
+  kyc_id         Int       @id @default(autoincrement())
+  user_id        Int       @unique
+  cnic_number    String    @unique @db.VarChar(15)
+  cnic_front     String    @db.VarChar(256) // IPFS/S3 URL
+  cnic_back      String    @db.VarChar(256) // IPFS/S3 URL
+  cnic_expiry    DateTime  @db.Date
+  face_scan      String?   @db.VarChar(256)
+  status         KYCStatus @default(pending)
+  rejection_reason String? @db.Text
+  reviewed_by    Int?      // Admin/Regulator ID
+  submitted_at   DateTime  @default(now())
+  reviewed_at    DateTime?
+
+  user           User      @relation(fields: [user_id], references: [user_id])
+
+  @@map("kyc_requests")
+}
+
+enum KYCStatus {
+  not_submitted
+  pending
+  approved
+  rejected
+  needs_revision
+}
+
+// Property Module
 model Property {
   property_id       Int       @id @default(autoincrement())
   owner_id          Int
   title             String     @db.VarChar(256)
   location          String     @db.VarChar(256)
   description       String?    @db.Text
+  property_type     PropertyType
   valuation         Decimal    @db.Decimal(15, 2)
-  verification_status VerificationStatus @default(pending)
+  verification_status VerificationStatus @default(draft)
+  image_folder_path String?    @db.VarChar(256)
   created_at        DateTime   @default(now())
-  image_folder_path String     @db.VarChar(256)
+  updated_at        DateTime   @updatedAt
 
   // Relations
-  owner User @relation(fields: [owner_id], references: [user_id])
-  documents Document[]
-  sukuks    Sukuk[]
+  owner             User       @relation(fields: [owner_id], references: [user_id])
+  documents         Document[]
+  sukuks            Sukuk[]
   verification_logs VerificationLog[]
 
   @@map("properties")
 }
 
+enum PropertyType {
+  residential
+  commercial
+  industrial
+}
 
 enum VerificationStatus {
+  draft
   pending
   approved
   rejected
+  live
+  sold_out
+  suspended
 }
 
-//Document
 model Document {
   document_id        Int       @id @default(autoincrement())
   property_id        Int
   file_hash          String    @db.VarChar(256)
   file_name          String    @db.VarChar(256)
   file_type          String    @db.VarChar(50)
+  file_path          String    @db.VarChar(256) // Actual path to file/folder
   uploaded_at        DateTime  @default(now())
   verified_by        Int?      // Nullable regulator user ID
   verification_status VerificationStatusDoc @default(pending)
-  file_path          String    @db.VarChar(256) // Actual path to file/folder
 
   // Relations
-  property Property @relation(fields: [property_id], references: [property_id])
-  regulator User?   @relation(fields: [verified_by], references: [user_id])
+  property           Property  @relation(fields: [property_id], references: [property_id])
+  regulator          User?     @relation(fields: [verified_by], references: [user_id])
 
   @@map("documents")
 }
@@ -96,24 +188,25 @@ enum VerificationStatusDoc {
   rejected
 }
 
-//Sukuk
+// Sukuk & Investment Module
 model Sukuk {
   sukuk_id        Int       @id @default(autoincrement())
   property_id     Int
   total_tokens    Int
+  available_tokens Int
   token_price     Decimal   @db.Decimal(15,4)
-  roi_percent     Decimal?  @db.Decimal(5,2)
+  yield_percent   Decimal?  @db.Decimal(5,2)
   maturity_date   DateTime? @db.Date
   blockchain_hash String?   @db.VarChar(256)
   status          SukukStatus @default(active)
   issued_at       DateTime  @default(now())
 
   // Relations
-  property Property @relation(fields: [property_id], references: [property_id])
-  investments Investment[]
+  property             Property @relation(fields: [property_id], references: [property_id])
+  investments          Investment[]
   profit_distributions ProfitDistribution[]
-  transaction_logs TransactionLog[]
-  compliance_records ComplianceRecord[]
+  transaction_logs     TransactionLog[]
+  compliance_records   ComplianceRecord[]
 
   @@map("sukuks")
 }
@@ -124,40 +217,38 @@ enum SukukStatus {
   redeemed
 }
 
-//Investment
 model Investment {
   investment_id  Int       @id @default(autoincrement())
   investor_id    Int
   sukuk_id       Int
   tokens_owned   Int
-  purchase_value Decimal   @db.Decimal(10,2)
+  purchase_value Decimal   @db.Decimal(15,2)
   tx_hash        String?   @db.VarChar(256)
   purchase_date  DateTime  @default(now())
 
   // Relations
-  investor User   @relation(fields: [investor_id], references: [user_id])
-  sukuk    Sukuk  @relation(fields: [sukuk_id], references: [sukuk_id])
+  investor       User      @relation(fields: [investor_id], references: [user_id])
+  sukuk          Sukuk     @relation(fields: [sukuk_id], references: [sukuk_id])
 
   @@map("investments")
 }
 
-//Profit Distribution
 model ProfitDistribution {
   distribution_id Int       @id @default(autoincrement())
   sukuk_id       Int
   investor_id    Int
-  amount         Decimal   @db.Decimal(10,2)
+  amount         Decimal   @db.Decimal(15,2)
   tx_hash        String    @db.VarChar(256)
-  distributed_at DateTime? 
+  distributed_at DateTime  @default(now())
 
   // Relations
-  sukuk    Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
-  investor User  @relation(fields: [investor_id], references: [user_id])
+  sukuk          Sukuk     @relation(fields: [sukuk_id], references: [sukuk_id])
+  investor       User      @relation(fields: [investor_id], references: [user_id])
 
   @@map("profit_distributions")
 }
 
-//Verification Log
+// Logs & Compliance
 model VerificationLog {
   log_id      Int       @id @default(autoincrement())
   property_id Int
@@ -167,8 +258,8 @@ model VerificationLog {
   timestamp   DateTime  @default(now())
 
   // Relations
-  property  Property @relation(fields: [property_id], references: [property_id])
-  regulator User     @relation(fields: [regulator_id], references: [user_id])
+  property    Property  @relation(fields: [property_id], references: [property_id])
+  regulator   User      @relation(fields: [regulator_id], references: [user_id])
 
   @@map("verification_logs")
 }
@@ -176,21 +267,22 @@ model VerificationLog {
 enum VerificationStatusLog {
   approved
   rejected
+  needs_revision
 }
 
-//Transaction Log
 model TransactionLog {
   transaction_id Int       @id @default(autoincrement())
   user_id        Int
-  sukuk_id       Int
+  sukuk_id       Int?
   type           TransactionType
   amount         Decimal   @db.Decimal(15,2)
   tx_hash        String?   @db.VarChar(256)
+  status         TransactionStatus @default(pending)
   timestamp      DateTime  @default(now())
 
   // Relations
-  user  User  @relation(fields: [user_id], references: [user_id])
-  sukuk Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
+  user           User      @relation(fields: [user_id], references: [user_id])
+  sukuk          Sukuk?    @relation(fields: [sukuk_id], references: [sukuk_id])
 
   @@map("transaction_logs")
 }
@@ -198,11 +290,17 @@ model TransactionLog {
 enum TransactionType {
   buy
   sell
-  profit
+  profit_payout
   redeem
+  wallet_fund
 }
 
-//Compliance Record
+enum TransactionStatus {
+  pending
+  success
+  failed
+}
+
 model ComplianceRecord {
   compliance_id  Int       @id @default(autoincrement())
   sukuk_id       Int
@@ -213,8 +311,8 @@ model ComplianceRecord {
   timestamp      DateTime  @default(now())
 
   // Relations
-  sukuk    Sukuk @relation(fields: [sukuk_id], references: [sukuk_id])
-  regulator User  @relation(fields: [verified_by], references: [user_id])
+  sukuk          Sukuk     @relation(fields: [sukuk_id], references: [sukuk_id])
+  regulator      User      @relation(fields: [verified_by], references: [user_id])
 
   @@map("compliance_records")
 }
@@ -225,7 +323,19 @@ enum ComplianceStatus {
   violated
 }
 
-//Notification
+model AuditLog {
+  log_id      Int      @id @default(autoincrement())
+  user_id     Int?
+  action      String   @db.VarChar(256)
+  details     String?  @db.Text
+  ip_address  String?  @db.VarChar(50)
+  timestamp   DateTime @default(now())
+
+  user        User?    @relation(fields: [user_id], references: [user_id])
+
+  @@map("audit_logs")
+}
+
 model Notification {
   notification_id Int       @id @default(autoincrement())
   user_id         Int
@@ -235,7 +345,7 @@ model Notification {
   created_at      DateTime  @default(now())
 
   // Relation
-  user User @relation(fields: [user_id], references: [user_id])
+  user            User      @relation(fields: [user_id], references: [user_id])
 
   @@map("notifications")
 }
@@ -245,5 +355,6 @@ enum NotificationType {
   profit
   transaction
   system
+  security
 }
 
