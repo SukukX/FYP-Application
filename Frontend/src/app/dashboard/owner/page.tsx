@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Building2, Shield, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -28,10 +30,16 @@ export default function OwnerDashboard() {
     const [listingData, setListingData] = useState({
         title: "",
         address: "",
+        propertyType: "residential",
+        description: "",
         valuation: "",
         totalTokens: "",
         tokensForSale: "",
         pricePerToken: "",
+    });
+    const [files, setFiles] = useState<{ images: File[], docs: File[] }>({
+        images: [],
+        docs: []
     });
     const { toast } = useToast();
 
@@ -79,22 +87,28 @@ export default function OwnerDashboard() {
         setCurrentStep(currentStep + 1);
     };
 
-    const handleSubmitListing = async () => {
+    const handleSubmitListing = async (isDraft = false) => {
         try {
-            // Create FormData for file upload support (even if we're just sending text for now)
-            // In a real app, we'd append the files here
             const formData = new FormData();
-            Object.entries(listingData).forEach(([key, value]) => {
-                formData.append(key, value);
-            });
+            formData.append("title", listingData.title);
+            formData.append("location", listingData.address);
+            formData.append("description", listingData.description);
+            formData.append("property_type", listingData.propertyType);
+            formData.append("valuation", listingData.valuation);
+            formData.append("total_tokens", listingData.totalTokens);
+            formData.append("price_per_token", listingData.pricePerToken);
+            formData.append("isDraft", isDraft.toString());
+            // formData.append("tokens_for_sale", listingData.tokensForSale); // Backend doesn't use this yet
 
             await api.post("/properties", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
             toast({
-                title: "Listing Submitted",
-                description: "Your property listing has been submitted for regulator verification.",
+                title: isDraft ? "Draft Saved" : "Listing Submitted",
+                description: isDraft
+                    ? "Your listing has been saved as a draft."
+                    : "Your property listing has been submitted for regulator verification.",
             });
 
             setListingModalOpen(false);
@@ -102,11 +116,14 @@ export default function OwnerDashboard() {
             setListingData({
                 title: "",
                 address: "",
+                propertyType: "residential",
+                description: "",
                 valuation: "",
                 totalTokens: "",
                 tokensForSale: "",
                 pricePerToken: "",
             });
+            setFiles({ images: [], docs: [] });
             fetchDashboardData(); // Refresh data
         } catch (error: any) {
             toast({
@@ -192,15 +209,15 @@ export default function OwnerDashboard() {
                         ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 {listings.map((listing) => (
-                                    <Card key={listing.id} className="border-2 hover:border-accent/50 transition-colors">
+                                    <Card key={listing.property_id} className="border-2 hover:border-accent/50 transition-colors">
                                         <CardContent className="p-4">
                                             <div className="flex items-start justify-between mb-3">
                                                 <div>
                                                     <h3 className="font-semibold text-primary mb-1">{listing.title}</h3>
-                                                    <p className="text-sm text-muted-foreground">{listing.address}</p>
+                                                    <p className="text-sm text-muted-foreground">{listing.location}</p>
                                                 </div>
-                                                <Badge variant={listing.status === 'approved' ? 'default' : 'secondary'}>
-                                                    {listing.status}
+                                                <Badge variant={listing.verification_status === 'approved' ? 'default' : 'secondary'}>
+                                                    {listing.verification_status}
                                                 </Badge>
                                             </div>
 
@@ -217,11 +234,92 @@ export default function OwnerDashboard() {
                                                 </div>
                                             </div>
 
-                                            <Link href={`/marketplace/${listing.id}`}>
-                                                <Button variant="outline" className="w-full">
-                                                    View Details
-                                                </Button>
-                                            </Link>
+                                            <div className="flex gap-2">
+                                                {listing.verification_status === 'draft' && (
+                                                    <>
+                                                        <Button className="flex-1" onClick={() => {
+                                                            // Load draft data
+                                                            setListingData({
+                                                                title: listing.title,
+                                                                address: listing.location,
+                                                                propertyType: listing.property_type,
+                                                                description: listing.description || "",
+                                                                valuation: listing.valuation.toString(),
+                                                                totalTokens: listing.sukuks?.[0]?.total_tokens?.toString() || "",
+                                                                tokensForSale: listing.sukuks?.[0]?.available_tokens?.toString() || "", // Assuming available = for sale initially
+                                                                pricePerToken: listing.sukuks?.[0]?.token_price?.toString() || "",
+                                                            });
+                                                            setListingModalOpen(true);
+                                                        }}>
+                                                            Complete Listing
+                                                        </Button>
+                                                        <Button variant="destructive" size="icon" onClick={async () => {
+                                                            if (confirm("Are you sure you want to delete this draft?")) {
+                                                                try {
+                                                                    await api.delete(`/properties/${listing.property_id}`);
+                                                                    toast({ title: "Draft Deleted", description: "Property draft removed." });
+                                                                    fetchDashboardData();
+                                                                } catch (e) {
+                                                                    toast({ title: "Error", description: "Failed to delete draft", variant: "destructive" });
+                                                                }
+                                                            }
+                                                        }}>
+                                                            <span className="sr-only">Delete</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                {listing.verification_status === 'pending' && (
+                                                    <Button variant="secondary" className="w-full" disabled>
+                                                        Waiting for Approval
+                                                    </Button>
+                                                )}
+                                                {listing.verification_status === 'approved' && listing.listing_status !== 'active' && (
+                                                    <Button className="w-full" onClick={async () => {
+                                                        try {
+                                                            await api.patch(`/properties/${listing.property_id}/status`, { status: "active" });
+                                                            toast({ title: "Success", description: "Property is now live!" });
+                                                            fetchDashboardData();
+                                                        } catch (e) {
+                                                            toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+                                                        }
+                                                    }}>
+                                                        Make Live
+                                                    </Button>
+                                                )}
+                                                {(listing.listing_status === 'active' || listing.verification_status === 'rejected') && (
+                                                    <div className="flex gap-2 w-full">
+                                                        <Link href={`/marketplace/${listing.property_id}`} className="flex-1">
+                                                            <Button variant="outline" className="w-full">
+                                                                {listing.listing_status === 'active' ? 'View' : 'View Details'}
+                                                            </Button>
+                                                        </Link>
+                                                        {listing.listing_status === 'active' && (
+                                                            <Button
+                                                                variant="destructive"
+                                                                className="flex-1"
+                                                                onClick={async () => {
+                                                                    if (confirm("Are you sure you want to unlive this listing?")) {
+                                                                        try {
+                                                                            await api.patch(`/properties/${listing.property_id}/status`, { status: "hidden" });
+                                                                            toast({ title: "Success", description: "Listing is now hidden." });
+                                                                            fetchDashboardData();
+                                                                        } catch (e: any) {
+                                                                            toast({
+                                                                                title: "Action Failed",
+                                                                                description: e.response?.data?.message || "Failed to unlive listing",
+                                                                                variant: "destructive"
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            >
+                                                                Unlive
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </CardContent>
                                     </Card>
                                 ))}
@@ -300,6 +398,34 @@ export default function OwnerDashboard() {
                                         placeholder="e.g., Premium Commercial Plaza - F-7"
                                     />
                                 </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="propertyType">Property Type</Label>
+                                        <Select
+                                            value={listingData.propertyType}
+                                            onValueChange={(value) => setListingData({ ...listingData, propertyType: value })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="residential">Residential</SelectItem>
+                                                <SelectItem value="commercial">Commercial</SelectItem>
+                                                <SelectItem value="industrial">Industrial</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="valuation">Valuation (PKR)</Label>
+                                        <Input
+                                            id="valuation"
+                                            type="number"
+                                            value={listingData.valuation}
+                                            onChange={(e) => setListingData({ ...listingData, valuation: e.target.value })}
+                                            placeholder="50000000"
+                                        />
+                                    </div>
+                                </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="address">Address</Label>
                                     <Input
@@ -310,13 +436,13 @@ export default function OwnerDashboard() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="valuation">Property Valuation (PKR)</Label>
-                                    <Input
-                                        id="valuation"
-                                        type="number"
-                                        value={listingData.valuation}
-                                        onChange={(e) => setListingData({ ...listingData, valuation: e.target.value })}
-                                        placeholder="50000000"
+                                    <Label htmlFor="description">Description</Label>
+                                    <Textarea
+                                        id="description"
+                                        value={listingData.description}
+                                        onChange={(e) => setListingData({ ...listingData, description: e.target.value })}
+                                        placeholder="Describe the property features and investment potential..."
+                                        className="h-24"
                                     />
                                 </div>
                             </div>
@@ -331,7 +457,16 @@ export default function OwnerDashboard() {
                                         id="totalTokens"
                                         type="number"
                                         value={listingData.totalTokens}
-                                        onChange={(e) => setListingData({ ...listingData, totalTokens: e.target.value })}
+                                        onChange={(e) => {
+                                            const tokens = e.target.value;
+                                            const valuation = parseFloat(listingData.valuation) || 0;
+                                            const price = tokens ? (valuation / parseInt(tokens)).toFixed(2) : "";
+                                            setListingData({
+                                                ...listingData,
+                                                totalTokens: tokens,
+                                                pricePerToken: price
+                                            });
+                                        }}
                                         placeholder="1000"
                                     />
                                 </div>
@@ -346,14 +481,17 @@ export default function OwnerDashboard() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="pricePerToken">Price per Token (PKR)</Label>
+                                    <Label htmlFor="pricePerToken">Price per Token (PKR) - Auto Calculated</Label>
                                     <Input
                                         id="pricePerToken"
                                         type="number"
                                         value={listingData.pricePerToken}
-                                        onChange={(e) => setListingData({ ...listingData, pricePerToken: e.target.value })}
-                                        placeholder="50000"
+                                        readOnly
+                                        className="bg-muted"
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                        Calculated as Valuation ({Number(listingData.valuation).toLocaleString()}) / Total Tokens
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -362,16 +500,42 @@ export default function OwnerDashboard() {
                             <div className="space-y-4">
                                 <h3 className="font-semibold text-lg mb-4">Upload Documents</h3>
                                 <div className="space-y-2">
-                                    <Label>Property Images</Label>
-                                    <Button variant="outline" className="w-full">
-                                        Upload Images (Max 10, 5MB each)
-                                    </Button>
+                                    <Label htmlFor="images">Property Images</Label>
+                                    <Input
+                                        id="images"
+                                        type="file"
+                                        multiple
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            if (e.target.files) {
+                                                setFiles({ ...files, images: Array.from(e.target.files) });
+                                            }
+                                        }}
+                                    />
+                                    {files.images.length > 0 && (
+                                        <div className="text-sm text-muted-foreground mt-2">
+                                            Selected: {files.images.map(f => f.name).join(", ")}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Legal Documents</Label>
-                                    <Button variant="outline" className="w-full">
-                                        Upload PDFs (Max 20MB each)
-                                    </Button>
+                                    <Label htmlFor="docs">Legal Documents</Label>
+                                    <Input
+                                        id="docs"
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.doc,.docx"
+                                        onChange={(e) => {
+                                            if (e.target.files) {
+                                                setFiles({ ...files, docs: Array.from(e.target.files) });
+                                            }
+                                        }}
+                                    />
+                                    {files.docs.length > 0 && (
+                                        <div className="text-sm text-muted-foreground mt-2">
+                                            Selected: {files.docs.map(f => f.name).join(", ")}
+                                        </div>
+                                    )}
                                 </div>
                                 <p className="text-sm text-muted-foreground">
                                     Required: Ownership deed, Valuation report, FBR documentation
@@ -382,10 +546,14 @@ export default function OwnerDashboard() {
                         {currentStep === 4 && (
                             <div className="space-y-4">
                                 <h3 className="font-semibold text-lg mb-4">Review & Submit</h3>
-                                <div className="space-y-3 p-4 bg-muted rounded-lg">
+                                <div className="space-y-3 p-4 bg-muted rounded-lg text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">Title</span>
                                         <span className="font-semibold">{listingData.title}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Type</span>
+                                        <span className="font-semibold capitalize">{listingData.propertyType}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">Valuation</span>
@@ -396,8 +564,16 @@ export default function OwnerDashboard() {
                                         <span className="font-semibold">{listingData.totalTokens}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Tokens for Sale</span>
-                                        <span className="font-semibold">{listingData.tokensForSale}</span>
+                                        <span className="text-muted-foreground">Price/Token</span>
+                                        <span className="font-semibold">PKR {listingData.pricePerToken}</span>
+                                    </div>
+                                    <div className="pt-2 border-t">
+                                        <span className="text-muted-foreground block mb-1">Description</span>
+                                        <p className="line-clamp-2">{listingData.description}</p>
+                                    </div>
+                                    <div className="pt-2 border-t">
+                                        <span className="text-muted-foreground block mb-1">Documents</span>
+                                        <p>{files.images.length} Images, {files.docs.length} Documents</p>
                                     </div>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
@@ -427,7 +603,7 @@ export default function OwnerDashboard() {
                                     <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
                             ) : (
-                                <Button onClick={handleSubmitListing}>
+                                <Button onClick={() => handleSubmitListing(false)}>
                                     Submit for Approval
                                 </Button>
                             )}

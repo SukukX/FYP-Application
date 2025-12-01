@@ -8,7 +8,8 @@ export const getListings = async (req: Request, res: Response) => {
         const { location, type, minPrice, maxPrice } = req.query;
 
         const where: any = {
-            verification_status: { in: ["live", "approved"] },
+            verification_status: "approved",
+            listing_status: "active",
         };
 
         if (location) {
@@ -31,11 +32,29 @@ export const getListings = async (req: Request, res: Response) => {
                 documents: {
                     where: { verification_status: "verified" }, // Only show verified docs
                     select: { file_path: true, file_type: true }
-                }
+                },
+                sukuks: true
             }
         });
 
-        res.json(properties);
+        const formattedProperties = properties.map(p => {
+            const sukuk = p.sukuks[0];
+            return {
+                id: p.property_id,
+                title: p.title,
+                address: p.location,
+                valuation: parseFloat(p.valuation.toString()),
+                description: p.description,
+                property_type: p.property_type,
+                images: p.documents.filter(d => d.file_type.startsWith("image")).map(d => d.file_path),
+                total_tokens: sukuk ? sukuk.total_tokens : 0,
+                tokens_available: sukuk ? sukuk.available_tokens : 0,
+                price_per_token: sukuk ? parseFloat(sukuk.token_price.toString()) : 0,
+                created_at: p.created_at
+            };
+        });
+
+        res.json(formattedProperties);
     } catch (error) {
         console.error("Get Listings Error:", error);
         res.status(500).json({ message: "Server error" });

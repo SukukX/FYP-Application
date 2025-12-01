@@ -92,16 +92,25 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
         // Fetch Owner's Properties
         const properties = await prisma.property.findMany({
             where: { owner_id: userId },
-            orderBy: { created_at: 'desc' }
+            orderBy: { created_at: 'desc' },
+            include: { sukuks: true }
         });
 
         // Calculate Stats
-        const activeListings = properties.filter(p => p.verification_status === 'approved').length;
+        const activeListings = properties.filter(p => p.listing_status === 'active').length;
         const pendingApprovals = properties.filter(p => p.verification_status === 'pending').length;
 
-        // Mocking financial stats for now as Transaction model integration is complex
-        const tokensSold = 0;
-        const totalRevenue = 0;
+        let tokensSold = 0;
+        let totalRevenue = 0;
+
+        properties.forEach(p => {
+            if (p.sukuks && p.sukuks.length > 0) {
+                const sukuk = p.sukuks[0];
+                const sold = sukuk.total_tokens - sukuk.available_tokens;
+                tokensSold += sold;
+                totalRevenue += sold * parseFloat(sukuk.token_price.toString());
+            }
+        });
 
         const stats = {
             activeListings,
@@ -110,11 +119,21 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             pendingApprovals,
         };
 
+        const formattedProperties = properties.map(p => {
+            const sukuk = p.sukuks[0];
+            return {
+                ...p,
+                total_tokens: sukuk ? sukuk.total_tokens : 0,
+                tokens_available: sukuk ? sukuk.available_tokens : 0,
+                token_price: sukuk ? sukuk.token_price : 0,
+            };
+        });
+
         res.json({
             role: "owner",
             stats,
             alerts,
-            listings: properties,
+            listings: formattedProperties,
         });
     } catch (error) {
         console.error("Owner Dashboard Error:", error);
@@ -151,14 +170,17 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             where: { status: KYCStatus.pending },
             take: 5,
             orderBy: { submitted_at: 'asc' },
-            include: { user: { select: { name: true, email: true } } }
+            include: { user: { select: { name: true, email: true, role: true } } }
         });
 
         const listingQueue = await prisma.property.findMany({
             where: { verification_status: "pending" },
             take: 5,
             orderBy: { created_at: 'asc' },
-            include: { owner: { select: { name: true, email: true } } }
+            include: {
+                owner: { select: { name: true, email: true } },
+                sukuks: { select: { total_tokens: true } }
+            }
         });
 
         res.json({

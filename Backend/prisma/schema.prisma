@@ -135,6 +135,7 @@ model Property {
   property_type     PropertyType
   valuation         Decimal    @db.Decimal(15, 2)
   verification_status VerificationStatus @default(draft)
+  listing_status    ListingStatus    @default(hidden)
   image_folder_path String?    @db.VarChar(256)
   created_at        DateTime   @default(now())
   updated_at        DateTime   @updatedAt
@@ -159,7 +160,11 @@ enum VerificationStatus {
   pending
   approved
   rejected
-  live
+}
+
+enum ListingStatus {
+  hidden
+  active
   sold_out
   suspended
 }

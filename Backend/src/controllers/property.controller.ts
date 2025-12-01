@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc } from "@prisma/client";
+import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
@@ -39,7 +39,16 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        const { title, location, description, property_type, valuation, total_tokens, price_per_token } = req.body;
+        const {
+            title,
+            location,
+            description,
+            property_type,
+            valuation,
+            total_tokens,
+            price_per_token,
+            isDraft
+        } = req.body;
 
         const property = await prisma.property.create({
             data: {
@@ -49,7 +58,8 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                 description,
                 property_type: property_type as PropertyType,
                 valuation: parseFloat(valuation),
-                verification_status: VerificationStatus.draft,
+                verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
+                listing_status: ListingStatus.hidden, // Default to hidden until approved and made live
             },
         });
 
@@ -224,6 +234,96 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
         res.json({ message: `Property ${status}`, property: updated });
     } catch (error) {
         console.error("Verify Property Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// Owner: Update Listing Status (e.g. Make Live)
+export const updateListingStatus = async (req: AuthRequest, res: Response) => {
+    try {
+        const { status } = req.body; // active, hidden, suspended
+        const propertyId = parseInt(req.params.id);
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const property = await prisma.property.findUnique({
+            where: { property_id: propertyId },
+        });
+
+        if (!property || property.owner_id !== userId) {
+            res.status(404).json({ message: "Property not found or unauthorized" });
+            return;
+        }
+
+        if (property.verification_status !== "approved") {
+            res.status(400).json({ message: "Property must be approved before going live" });
+            return;
+        }
+
+        // If trying to unlive (hide/suspend), check if tokens are sold
+        if (status !== "active") {
+            const sukuk = await prisma.sukuk.findFirst({
+                where: { property_id: propertyId }
+            });
+
+            if (sukuk && sukuk.total_tokens !== sukuk.available_tokens) {
+                res.status(400).json({ message: "Cannot unlive listing: Tokens have already been sold" });
+                return;
+            }
+        }
+
+        const updated = await prisma.property.update({
+            where: { property_id: propertyId },
+            data: { listing_status: status },
+        });
+
+        res.json({ message: `Listing status updated to ${status}`, property: updated });
+    } catch (error) {
+        console.error("Update Listing Status Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// Owner: Delete Property (Draft only)
+export const deleteProperty = async (req: AuthRequest, res: Response) => {
+    try {
+        const propertyId = parseInt(req.params.id);
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const property = await prisma.property.findUnique({
+            where: { property_id: propertyId },
+        });
+
+        if (!property || property.owner_id !== userId) {
+            res.status(404).json({ message: "Property not found or unauthorized" });
+            return;
+        }
+
+        if (property.verification_status !== "draft") {
+            res.status(400).json({ message: "Only draft properties can be deleted" });
+            return;
+        }
+
+        // Delete related records first (if any)
+        await prisma.sukuk.deleteMany({ where: { property_id: propertyId } });
+        await prisma.document.deleteMany({ where: { property_id: propertyId } });
+
+        await prisma.property.delete({
+            where: { property_id: propertyId },
+        });
+
+        res.json({ message: "Property draft deleted successfully" });
+    } catch (error) {
+        console.error("Delete Property Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

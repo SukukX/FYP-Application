@@ -85,11 +85,17 @@ export default function PropertyDetail() {
         );
     }
 
-    const totalPrice = numTokens * listing.price_per_token;
+    const sukuk = listing.sukuks && listing.sukuks.length > 0 ? listing.sukuks[0] : {};
+    const pricePerToken = sukuk.token_price || 0;
+    const tokensAvailable = sukuk.available_tokens || 0;
+    const totalTokens = sukuk.total_tokens || 0;
+    const tokensForSale = totalTokens - tokensAvailable; // Assuming available means unsold
+
+    const totalPrice = numTokens * pricePerToken;
     const estimatedFees = totalPrice * 0.02;
 
     // Calculate today's metrics
-    const currentPrice = listing.price_per_token;
+    const currentPrice = pricePerToken;
     const priceHistory = listing.priceHistory || [];
     const todayLow = priceHistory.length > 0
         ? Math.min(...priceHistory.slice(-7).map((p: any) => p.price))
@@ -132,10 +138,10 @@ export default function PropertyDetail() {
             return;
         }
 
-        if (numTokens > listing.tokens_available) {
+        if (numTokens > tokensAvailable) {
             toast({
                 title: "Insufficient Tokens",
-                description: `Only ${listing.tokens_available} tokens available.`,
+                description: `Only ${tokensAvailable} tokens available.`,
                 variant: "destructive",
             });
             return;
@@ -314,18 +320,18 @@ export default function PropertyDetail() {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Tokens</span>
-                                    <span className="font-semibold">{listing.total_tokens}</span>
+                                    <span className="font-semibold">{totalTokens}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Available</span>
                                     <span className="font-semibold flex items-center gap-1">
                                         <TrendingUp className="h-3 w-3 text-verified" />
-                                        {listing.tokens_available}
+                                        {tokensAvailable}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">For Sale</span>
-                                    <span className="font-semibold">{listing.tokens_for_sale} ({((listing.tokens_for_sale / listing.total_tokens) * 100).toFixed(0)}%)</span>
+                                    <span className="font-semibold">{tokensForSale} ({totalTokens > 0 ? ((tokensForSale / totalTokens) * 100).toFixed(0) : 0}%)</span>
                                 </div>
 
                                 <div className="pt-4 border-t space-y-2">
@@ -388,7 +394,7 @@ export default function PropertyDetail() {
                             <Input
                                 type="number"
                                 min={1}
-                                max={listing.tokensAvailable}
+                                max={tokensAvailable}
                                 value={numTokens}
                                 onChange={(e) => setNumTokens(parseInt(e.target.value) || 1)}
                             />
@@ -397,7 +403,7 @@ export default function PropertyDetail() {
                         <div className="space-y-2 p-4 bg-accent/10 rounded-lg">
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Price per Token</span>
-                                <span>PKR {listing.price_per_token.toLocaleString()}</span>
+                                <span>PKR {pricePerToken.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Tokens</span>

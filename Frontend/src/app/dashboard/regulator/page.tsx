@@ -32,7 +32,7 @@ export default function RegulatorDashboard() {
         try {
             const res = await api.get("/dashboard/regulator");
             setKycQueue(res.data.kycQueue);
-            setListingQueue(res.data.pendingListings);
+            setListingQueue(res.data.listingQueue || []);
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast({
@@ -48,13 +48,13 @@ export default function RegulatorDashboard() {
     const handleApprove = async (item: any, type: "kyc" | "listing") => {
         try {
             if (type === "kyc") {
-                await api.post("/kyc/approve", { userId: item.userId });
+                await api.post("/kyc/approve", { userId: item.user_id });
                 toast({
                     title: "KYC Approved",
-                    description: `${item.username}'s KYC has been approved.`,
+                    description: `${item.user?.name}'s KYC has been approved.`,
                 });
             } else {
-                await api.post(`/properties/${item.id}/verify`, { status: "approved" });
+                await api.post(`/properties/${item.property_id}/verify`, { status: "approved" });
                 toast({
                     title: "Listing Approved",
                     description: `${item.title} has been approved for marketplace.`,
@@ -84,14 +84,14 @@ export default function RegulatorDashboard() {
 
         try {
             if (type === "kyc") {
-                await api.post("/kyc/reject", { userId: item.userId, comments: reviewComments });
+                await api.post("/kyc/reject", { userId: item.user_id, comments: reviewComments });
                 toast({
                     title: "KYC Rejected",
-                    description: `${item.username}'s KYC has been rejected.`,
+                    description: `${item.user?.name}'s KYC has been rejected.`,
                     variant: "destructive",
                 });
             } else {
-                await api.post(`/properties/${item.id}/verify`, { status: "rejected", comments: reviewComments });
+                await api.post(`/properties/${item.property_id}/verify`, { status: "rejected", comments: reviewComments });
                 toast({
                     title: "Listing Rejected",
                     description: `${item.title} has been rejected.`,
@@ -200,16 +200,16 @@ export default function RegulatorDashboard() {
                                 </TableHeader>
                                 <TableBody>
                                     {kycQueue.map((user) => (
-                                        <TableRow key={user.userId}>
-                                            <TableCell className="font-medium">{user.username}</TableCell>
-                                            <TableCell>{user.email}</TableCell>
-                                            <TableCell>{user.cnic}</TableCell>
+                                        <TableRow key={user.user_id}>
+                                            <TableCell className="font-medium">{user.user?.name}</TableCell>
+                                            <TableCell>{user.user?.email}</TableCell>
+                                            <TableCell>{user.cnic_number}</TableCell>
                                             <TableCell>
                                                 <Badge variant="outline" className="capitalize">
-                                                    {user.role}
+                                                    {user.user?.role}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell>{new Date(user.submittedAt).toLocaleDateString()}</TableCell>
+                                            <TableCell>{new Date(user.submitted_at).toLocaleDateString()}</TableCell>
                                             <TableCell>
                                                 <Badge className="bg-pending text-primary">Pending</Badge>
                                             </TableCell>
@@ -262,12 +262,12 @@ export default function RegulatorDashboard() {
                                 </TableHeader>
                                 <TableBody>
                                     {listingQueue.map((listing) => (
-                                        <TableRow key={listing.id}>
+                                        <TableRow key={listing.property_id}>
                                             <TableCell className="font-medium">{listing.title}</TableCell>
-                                            <TableCell>{listing.ownerName}</TableCell>
+                                            <TableCell>{listing.owner?.name}</TableCell>
                                             <TableCell>PKR {(listing.valuation / 1000000).toFixed(1)}M</TableCell>
-                                            <TableCell>{listing.totalTokens}</TableCell>
-                                            <TableCell>{new Date(listing.submittedAt).toLocaleDateString()}</TableCell>
+                                            <TableCell>{listing.sukuks?.[0]?.total_tokens || "N/A"}</TableCell>
+                                            <TableCell>{new Date(listing.created_at).toLocaleDateString()}</TableCell>
                                             <TableCell>
                                                 <Badge className="bg-pending text-primary">Pending</Badge>
                                             </TableCell>
@@ -355,19 +355,19 @@ export default function RegulatorDashboard() {
                                         <>
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Name</span>
-                                                <span className="font-semibold">{selectedItem.username}</span>
+                                                <span className="font-semibold">{selectedItem.user?.name}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Email</span>
-                                                <span className="font-semibold">{selectedItem.email}</span>
+                                                <span className="font-semibold">{selectedItem.user?.email}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">CNIC</span>
-                                                <span className="font-semibold">{selectedItem.cnic}</span>
+                                                <span className="font-semibold">{selectedItem.cnic_number}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Role</span>
-                                                <span className="font-semibold capitalize">{selectedItem.role}</span>
+                                                <span className="font-semibold capitalize">{selectedItem.user?.role}</span>
                                             </div>
                                         </>
                                     ) : (
@@ -382,7 +382,7 @@ export default function RegulatorDashboard() {
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Total Tokens</span>
-                                                <span className="font-semibold">{selectedItem.totalTokens}</span>
+                                                <span className="font-semibold">{selectedItem.sukuks?.[0]?.total_tokens || "N/A"}</span>
                                             </div>
                                         </>
                                     )}
