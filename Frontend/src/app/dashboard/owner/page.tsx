@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Building2, Shield, ArrowRight, ArrowLeft } from "lucide-react";
+import { Plus, Building2, Shield, ArrowRight, ArrowLeft, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
@@ -22,8 +22,8 @@ export default function OwnerDashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [listings, setListings] = useState<any[]>([]);
     const [stats, setStats] = useState({
-        totalProperties: 0,
-        totalTokensSold: 0,
+        activeListings: 0,
+        tokensSold: 0,
         totalRevenue: 0
     });
 
@@ -83,6 +83,14 @@ export default function OwnerDashboard() {
                 });
                 return;
             }
+            if (parseInt(listingData.tokensForSale) > parseInt(listingData.totalTokens)) {
+                toast({
+                    title: "Invalid Input",
+                    description: "Tokens for sale cannot exceed total tokens.",
+                    variant: "destructive",
+                });
+                return;
+            }
         }
         setCurrentStep(currentStep + 1);
     };
@@ -98,7 +106,15 @@ export default function OwnerDashboard() {
             formData.append("total_tokens", listingData.totalTokens);
             formData.append("price_per_token", listingData.pricePerToken);
             formData.append("isDraft", isDraft.toString());
-            // formData.append("tokens_for_sale", listingData.tokensForSale); // Backend doesn't use this yet
+            formData.append("tokens_for_sale", listingData.tokensForSale);
+
+            // Append files
+            files.images.forEach((file) => {
+                formData.append("images", file);
+            });
+            files.docs.forEach((file) => {
+                formData.append("documents", file);
+            });
 
             await api.post("/properties", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
@@ -134,6 +150,25 @@ export default function OwnerDashboard() {
         }
     };
 
+    const handleUpdateSupply = async (propertyId: number, currentSupply: number, totalTokens: number) => {
+        const newSupply = prompt(`Enter new available tokens (Max: ${totalTokens})`, currentSupply.toString());
+        if (newSupply === null) return;
+
+        const supply = parseInt(newSupply);
+        if (isNaN(supply) || supply < 0 || supply > totalTokens) {
+            toast({ title: "Invalid Input", description: "Please enter a valid number within range.", variant: "destructive" });
+            return;
+        }
+
+        try {
+            await api.patch(`/properties/${propertyId}/supply`, { available_tokens: supply });
+            toast({ title: "Success", description: "Token supply updated." });
+            fetchDashboardData();
+        } catch (e: any) {
+            toast({ title: "Error", description: e.response?.data?.message || "Failed to update supply", variant: "destructive" });
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background">
             <Navbar />
@@ -158,7 +193,7 @@ export default function OwnerDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">{stats.totalProperties}</div>
+                            <div className="text-3xl font-bold text-primary">{stats.activeListings}</div>
                             <p className="text-xs text-muted-foreground mt-1">Properties listed</p>
                         </CardContent>
                     </Card>
@@ -168,7 +203,7 @@ export default function OwnerDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Tokens Sold</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">{stats.totalTokensSold}</div>
+                            <div className="text-3xl font-bold text-primary">{stats.tokensSold}</div>
                             <p className="text-xs text-muted-foreground mt-1">From all listings</p>
                         </CardContent>
                     </Card>
@@ -223,57 +258,71 @@ export default function OwnerDashboard() {
 
                                             <div className="space-y-2 mb-4">
                                                 <div className="flex justify-between text-sm">
-                                                    <span className="text-muted-foreground">Tokens Available</span>
-                                                    <span className="font-semibold">{listing.tokens_available || 0} / {listing.total_tokens}</span>
+                                                    <span className="text-muted-foreground">Token Distribution</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-xs">
+                                                            {listing.tokens_sold || 0} Sold | {listing.tokens_available || 0} Avail | {listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)} Rsrv
+                                                        </span>
+                                                        {listing.listing_status === 'active' && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0"
+                                                                onClick={() => handleUpdateSupply(listing.property_id, listing.tokens_available, listing.total_tokens)}
+                                                            >
+                                                                <SlidersHorizontal className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="w-full bg-muted rounded-full h-2">
+                                                <div className="w-full bg-muted rounded-full h-2 flex overflow-hidden">
+                                                    {/* Sold Tokens - Green */}
                                                     <div
-                                                        className="bg-accent h-2 rounded-full transition-all"
+                                                        className="bg-green-500 h-2 transition-all"
+                                                        style={{ width: `${((listing.tokens_sold || 0) / listing.total_tokens) * 100}%` }}
+                                                        title="Sold"
+                                                    />
+                                                    {/* Available Tokens - Blue (Accent) */}
+                                                    <div
+                                                        className="bg-accent h-2 transition-all"
                                                         style={{ width: `${((listing.tokens_available || 0) / listing.total_tokens) * 100}%` }}
+                                                        title="Available for Sale"
+                                                    />
+                                                    {/* Reserved Tokens - Orange */}
+                                                    <div
+                                                        className="bg-orange-400 h-2 transition-all"
+                                                        style={{ width: `${((listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)) / listing.total_tokens) * 100}%` }}
+                                                        title="Reserved"
                                                     />
                                                 </div>
                                             </div>
 
                                             <div className="flex gap-2">
                                                 {listing.verification_status === 'draft' && (
-                                                    <>
-                                                        <Button className="flex-1" onClick={() => {
-                                                            // Load draft data
-                                                            setListingData({
-                                                                title: listing.title,
-                                                                address: listing.location,
-                                                                propertyType: listing.property_type,
-                                                                description: listing.description || "",
-                                                                valuation: listing.valuation.toString(),
-                                                                totalTokens: listing.sukuks?.[0]?.total_tokens?.toString() || "",
-                                                                tokensForSale: listing.sukuks?.[0]?.available_tokens?.toString() || "", // Assuming available = for sale initially
-                                                                pricePerToken: listing.sukuks?.[0]?.token_price?.toString() || "",
-                                                            });
-                                                            setListingModalOpen(true);
-                                                        }}>
-                                                            Complete Listing
-                                                        </Button>
-                                                        <Button variant="destructive" size="icon" onClick={async () => {
-                                                            if (confirm("Are you sure you want to delete this draft?")) {
-                                                                try {
-                                                                    await api.delete(`/properties/${listing.property_id}`);
-                                                                    toast({ title: "Draft Deleted", description: "Property draft removed." });
-                                                                    fetchDashboardData();
-                                                                } catch (e) {
-                                                                    toast({ title: "Error", description: "Failed to delete draft", variant: "destructive" });
-                                                                }
-                                                            }
-                                                        }}>
-                                                            <span className="sr-only">Delete</span>
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-                                                        </Button>
-                                                    </>
+                                                    <Button className="flex-1" onClick={() => {
+                                                        // Load draft data
+                                                        setListingData({
+                                                            title: listing.title,
+                                                            address: listing.location,
+                                                            propertyType: listing.property_type,
+                                                            description: listing.description || "",
+                                                            valuation: listing.valuation.toString(),
+                                                            totalTokens: listing.sukuks?.[0]?.total_tokens?.toString() || "",
+                                                            tokensForSale: listing.sukuks?.[0]?.available_tokens?.toString() || "",
+                                                            pricePerToken: listing.sukuks?.[0]?.token_price?.toString() || "",
+                                                        });
+                                                        setListingModalOpen(true);
+                                                    }}>
+                                                        Complete Listing
+                                                    </Button>
                                                 )}
+
                                                 {listing.verification_status === 'pending' && (
                                                     <Button variant="secondary" className="w-full" disabled>
                                                         Waiting for Approval
                                                     </Button>
                                                 )}
+
                                                 {listing.verification_status === 'approved' && listing.listing_status !== 'active' && (
                                                     <Button className="w-full" onClick={async () => {
                                                         try {
@@ -287,6 +336,7 @@ export default function OwnerDashboard() {
                                                         Make Live
                                                     </Button>
                                                 )}
+
                                                 {(listing.listing_status === 'active' || listing.verification_status === 'rejected') && (
                                                     <div className="flex gap-2 w-full">
                                                         <Link href={`/marketplace/${listing.property_id}`} className="flex-1">
@@ -318,6 +368,24 @@ export default function OwnerDashboard() {
                                                             </Button>
                                                         )}
                                                     </div>
+                                                )}
+
+                                                {/* Delete Button for all listings */}
+                                                {listing.verification_status !== 'pending' && (
+                                                    <Button variant="destructive" size="icon" onClick={async () => {
+                                                        if (confirm("Are you sure you want to delete this property? This action cannot be undone.")) {
+                                                            try {
+                                                                await api.delete(`/properties/${listing.property_id}`);
+                                                                toast({ title: "Deleted", description: "Property deleted successfully." });
+                                                                fetchDashboardData();
+                                                            } catch (e: any) {
+                                                                toast({ title: "Error", description: e.response?.data?.message || "Failed to delete property", variant: "destructive" });
+                                                            }
+                                                        }
+                                                    }}>
+                                                        <span className="sr-only">Delete</span>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                                                    </Button>
                                                 )}
                                             </div>
                                         </CardContent>
@@ -376,243 +444,243 @@ export default function OwnerDashboard() {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
 
-            {/* Multi-Step Listing Modal */}
-            <Dialog open={listingModalOpen} onOpenChange={setListingModalOpen}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Create New Listing - Step {currentStep} of 4</DialogTitle>
-                    </DialogHeader>
+                {/* Multi-Step Listing Modal */}
+                <Dialog open={listingModalOpen} onOpenChange={setListingModalOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Create New Listing - Step {currentStep} of 4</DialogTitle>
+                        </DialogHeader>
 
-                    <div className="py-4">
-                        {currentStep === 1 && (
-                            <div className="space-y-4">
-                                <h3 className="font-semibold text-lg mb-4">Property Information</h3>
-                                <div className="space-y-2">
-                                    <Label htmlFor="title">Property Title</Label>
-                                    <Input
-                                        id="title"
-                                        value={listingData.title}
-                                        onChange={(e) => setListingData({ ...listingData, title: e.target.value })}
-                                        placeholder="e.g., Premium Commercial Plaza - F-7"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+                        <div className="py-4">
+                            {currentStep === 1 && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-lg mb-4">Property Information</h3>
                                     <div className="space-y-2">
-                                        <Label htmlFor="propertyType">Property Type</Label>
-                                        <Select
-                                            value={listingData.propertyType}
-                                            onValueChange={(value) => setListingData({ ...listingData, propertyType: value })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select type" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="residential">Residential</SelectItem>
-                                                <SelectItem value="commercial">Commercial</SelectItem>
-                                                <SelectItem value="industrial">Industrial</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="title">Property Title</Label>
+                                        <Input
+                                            id="title"
+                                            value={listingData.title}
+                                            onChange={(e) => setListingData({ ...listingData, title: e.target.value })}
+                                            placeholder="e.g., Premium Commercial Plaza - F-7"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="propertyType">Property Type</Label>
+                                            <Select
+                                                value={listingData.propertyType}
+                                                onValueChange={(value) => setListingData({ ...listingData, propertyType: value })}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="residential">Residential</SelectItem>
+                                                    <SelectItem value="commercial">Commercial</SelectItem>
+                                                    <SelectItem value="industrial">Industrial</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="valuation">Valuation (PKR)</Label>
+                                            <Input
+                                                id="valuation"
+                                                type="number"
+                                                value={listingData.valuation}
+                                                onChange={(e) => setListingData({ ...listingData, valuation: e.target.value })}
+                                                placeholder="50000000"
+                                            />
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="valuation">Valuation (PKR)</Label>
+                                        <Label htmlFor="address">Address</Label>
                                         <Input
-                                            id="valuation"
-                                            type="number"
-                                            value={listingData.valuation}
-                                            onChange={(e) => setListingData({ ...listingData, valuation: e.target.value })}
-                                            placeholder="50000000"
+                                            id="address"
+                                            value={listingData.address}
+                                            onChange={(e) => setListingData({ ...listingData, address: e.target.value })}
+                                            placeholder="Full property address"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description">Description</Label>
+                                        <Textarea
+                                            id="description"
+                                            value={listingData.description}
+                                            onChange={(e) => setListingData({ ...listingData, description: e.target.value })}
+                                            placeholder="Describe the property features and investment potential..."
+                                            className="h-24"
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="address">Address</Label>
-                                    <Input
-                                        id="address"
-                                        value={listingData.address}
-                                        onChange={(e) => setListingData({ ...listingData, address: e.target.value })}
-                                        placeholder="Full property address"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="description">Description</Label>
-                                    <Textarea
-                                        id="description"
-                                        value={listingData.description}
-                                        onChange={(e) => setListingData({ ...listingData, description: e.target.value })}
-                                        placeholder="Describe the property features and investment potential..."
-                                        className="h-24"
-                                    />
-                                </div>
-                            </div>
-                        )}
+                            )}
 
-                        {currentStep === 2 && (
-                            <div className="space-y-4">
-                                <h3 className="font-semibold text-lg mb-4">Token Economics</h3>
-                                <div className="space-y-2">
-                                    <Label htmlFor="totalTokens">Total Tokens</Label>
-                                    <Input
-                                        id="totalTokens"
-                                        type="number"
-                                        value={listingData.totalTokens}
-                                        onChange={(e) => {
-                                            const tokens = e.target.value;
-                                            const valuation = parseFloat(listingData.valuation) || 0;
-                                            const price = tokens ? (valuation / parseInt(tokens)).toFixed(2) : "";
-                                            setListingData({
-                                                ...listingData,
-                                                totalTokens: tokens,
-                                                pricePerToken: price
-                                            });
-                                        }}
-                                        placeholder="1000"
-                                    />
+                            {currentStep === 2 && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-lg mb-4">Token Economics</h3>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="totalTokens">Total Tokens</Label>
+                                        <Input
+                                            id="totalTokens"
+                                            type="number"
+                                            value={listingData.totalTokens}
+                                            onChange={(e) => {
+                                                const tokens = e.target.value;
+                                                const valuation = parseFloat(listingData.valuation) || 0;
+                                                const price = tokens ? (valuation / parseInt(tokens)).toFixed(2) : "";
+                                                setListingData({
+                                                    ...listingData,
+                                                    totalTokens: tokens,
+                                                    pricePerToken: price
+                                                });
+                                            }}
+                                            placeholder="1000"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="tokensForSale">Tokens for Sale</Label>
+                                        <Input
+                                            id="tokensForSale"
+                                            type="number"
+                                            value={listingData.tokensForSale}
+                                            onChange={(e) => setListingData({ ...listingData, tokensForSale: e.target.value })}
+                                            placeholder="400"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="pricePerToken">Price per Token (PKR) - Auto Calculated</Label>
+                                        <Input
+                                            id="pricePerToken"
+                                            type="number"
+                                            value={listingData.pricePerToken}
+                                            readOnly
+                                            className="bg-muted"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Calculated as Valuation ({Number(listingData.valuation).toLocaleString()}) / Total Tokens
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="tokensForSale">Tokens for Sale</Label>
-                                    <Input
-                                        id="tokensForSale"
-                                        type="number"
-                                        value={listingData.tokensForSale}
-                                        onChange={(e) => setListingData({ ...listingData, tokensForSale: e.target.value })}
-                                        placeholder="400"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="pricePerToken">Price per Token (PKR) - Auto Calculated</Label>
-                                    <Input
-                                        id="pricePerToken"
-                                        type="number"
-                                        value={listingData.pricePerToken}
-                                        readOnly
-                                        className="bg-muted"
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Calculated as Valuation ({Number(listingData.valuation).toLocaleString()}) / Total Tokens
+                            )}
+
+                            {currentStep === 3 && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-lg mb-4">Upload Documents</h3>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="images">Property Images</Label>
+                                        <Input
+                                            id="images"
+                                            type="file"
+                                            multiple
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                if (e.target.files) {
+                                                    setFiles({ ...files, images: Array.from(e.target.files) });
+                                                }
+                                            }}
+                                        />
+                                        {files.images.length > 0 && (
+                                            <div className="text-sm text-muted-foreground mt-2">
+                                                Selected: {files.images.map(f => f.name).join(", ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="docs">Legal Documents</Label>
+                                        <Input
+                                            id="docs"
+                                            type="file"
+                                            multiple
+                                            accept=".pdf,.doc,.docx"
+                                            onChange={(e) => {
+                                                if (e.target.files) {
+                                                    setFiles({ ...files, docs: Array.from(e.target.files) });
+                                                }
+                                            }}
+                                        />
+                                        {files.docs.length > 0 && (
+                                            <div className="text-sm text-muted-foreground mt-2">
+                                                Selected: {files.docs.map(f => f.name).join(", ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Required: Ownership deed, Valuation report, FBR documentation
                                     </p>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {currentStep === 3 && (
-                            <div className="space-y-4">
-                                <h3 className="font-semibold text-lg mb-4">Upload Documents</h3>
-                                <div className="space-y-2">
-                                    <Label htmlFor="images">Property Images</Label>
-                                    <Input
-                                        id="images"
-                                        type="file"
-                                        multiple
-                                        accept="image/*"
-                                        onChange={(e) => {
-                                            if (e.target.files) {
-                                                setFiles({ ...files, images: Array.from(e.target.files) });
-                                            }
-                                        }}
-                                    />
-                                    {files.images.length > 0 && (
-                                        <div className="text-sm text-muted-foreground mt-2">
-                                            Selected: {files.images.map(f => f.name).join(", ")}
+                            {currentStep === 4 && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-lg mb-4">Review & Submit</h3>
+                                    <div className="space-y-3 p-4 bg-muted rounded-lg text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Title</span>
+                                            <span className="font-semibold">{listingData.title}</span>
                                         </div>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="docs">Legal Documents</Label>
-                                    <Input
-                                        id="docs"
-                                        type="file"
-                                        multiple
-                                        accept=".pdf,.doc,.docx"
-                                        onChange={(e) => {
-                                            if (e.target.files) {
-                                                setFiles({ ...files, docs: Array.from(e.target.files) });
-                                            }
-                                        }}
-                                    />
-                                    {files.docs.length > 0 && (
-                                        <div className="text-sm text-muted-foreground mt-2">
-                                            Selected: {files.docs.map(f => f.name).join(", ")}
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Type</span>
+                                            <span className="font-semibold capitalize">{listingData.propertyType}</span>
                                         </div>
-                                    )}
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Valuation</span>
+                                            <span className="font-semibold">PKR {Number(listingData.valuation).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Total Tokens</span>
+                                            <span className="font-semibold">{listingData.totalTokens}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Price/Token</span>
+                                            <span className="font-semibold">PKR {listingData.pricePerToken}</span>
+                                        </div>
+                                        <div className="pt-2 border-t">
+                                            <span className="text-muted-foreground block mb-1">Description</span>
+                                            <p className="line-clamp-2">{listingData.description}</p>
+                                        </div>
+                                        <div className="pt-2 border-t">
+                                            <span className="text-muted-foreground block mb-1">Documents</span>
+                                            <p>{files.images.length} Images, {files.docs.length} Documents</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        By submitting, you confirm all information is accurate and documents are valid.
+                                        Your listing will be reviewed by regulators within 48 hours.
+                                    </p>
                                 </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Required: Ownership deed, Valuation report, FBR documentation
-                                </p>
-                            </div>
-                        )}
-
-                        {currentStep === 4 && (
-                            <div className="space-y-4">
-                                <h3 className="font-semibold text-lg mb-4">Review & Submit</h3>
-                                <div className="space-y-3 p-4 bg-muted rounded-lg text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Title</span>
-                                        <span className="font-semibold">{listingData.title}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Type</span>
-                                        <span className="font-semibold capitalize">{listingData.propertyType}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Valuation</span>
-                                        <span className="font-semibold">PKR {Number(listingData.valuation).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Total Tokens</span>
-                                        <span className="font-semibold">{listingData.totalTokens}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Price/Token</span>
-                                        <span className="font-semibold">PKR {listingData.pricePerToken}</span>
-                                    </div>
-                                    <div className="pt-2 border-t">
-                                        <span className="text-muted-foreground block mb-1">Description</span>
-                                        <p className="line-clamp-2">{listingData.description}</p>
-                                    </div>
-                                    <div className="pt-2 border-t">
-                                        <span className="text-muted-foreground block mb-1">Documents</span>
-                                        <p>{files.images.length} Images, {files.docs.length} Documents</p>
-                                    </div>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                    By submitting, you confirm all information is accurate and documents are valid.
-                                    Your listing will be reviewed by regulators within 48 hours.
-                                </p>
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter className="flex justify-between">
-                        <div>
-                            {currentStep > 1 && (
-                                <Button variant="outline" onClick={() => setCurrentStep(currentStep - 1)}>
-                                    <ArrowLeft className="mr-2 h-4 w-4" />
-                                    Back
-                                </Button>
                             )}
                         </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => setListingModalOpen(false)}>
-                                Cancel
-                            </Button>
-                            {currentStep < 4 ? (
-                                <Button onClick={handleNextStep}>
-                                    Next
-                                    <ArrowRight className="ml-2 h-4 w-4" />
-                                </Button>
-                            ) : (
-                                <Button onClick={() => handleSubmitListing(false)}>
-                                    Submit for Approval
-                                </Button>
-                            )}
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
-            <Chatbot />
+                        <DialogFooter className="flex justify-between">
+                            <div>
+                                {currentStep > 1 && (
+                                    <Button variant="outline" onClick={() => setCurrentStep(currentStep - 1)}>
+                                        <ArrowLeft className="mr-2 h-4 w-4" />
+                                        Back
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="outline" onClick={() => setListingModalOpen(false)}>
+                                    Cancel
+                                </Button>
+                                {currentStep < 4 ? (
+                                    <Button onClick={handleNextStep}>
+                                        Next
+                                        <ArrowRight className="ml-2 h-4 w-4" />
+                                    </Button>
+                                ) : (
+                                    <Button onClick={() => handleSubmitListing(false)}>
+                                        Submit for Approval
+                                    </Button>
+                                )}
+                            </div>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Chatbot />
+            </div>
         </div>
     );
 }

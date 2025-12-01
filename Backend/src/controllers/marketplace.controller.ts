@@ -30,7 +30,6 @@ export const getListings = async (req: Request, res: Response) => {
             where,
             include: {
                 documents: {
-                    where: { verification_status: "verified" }, // Only show verified docs
                     select: { file_path: true, file_type: true }
                 },
                 sukuks: true
@@ -69,7 +68,11 @@ export const getPropertyDetails = async (req: Request, res: Response) => {
             where: { property_id: propertyId },
             include: {
                 documents: true,
-                sukuks: true, // Show associated tokens
+                sukuks: true,
+                verification_logs: {
+                    orderBy: { timestamp: 'desc' },
+                    take: 1
+                }
             },
         });
 
@@ -78,7 +81,35 @@ export const getPropertyDetails = async (req: Request, res: Response) => {
             return;
         }
 
-        res.json(property);
+        // Format response for frontend
+        const p = property as any; // Cast to any to avoid TS issues with included relations
+
+        const images = p.documents
+            .filter((d: any) => d.file_type.startsWith("image"))
+            .map((d: any) => d.file_path);
+
+        const documents = p.documents
+            .filter((d: any) => !d.file_type.startsWith("image"))
+            .map((d: any) => ({
+                name: d.file_name,
+                path: d.file_path,
+                type: d.file_type
+            }));
+
+        const regulatorComments = p.verification_logs.length > 0
+            ? p.verification_logs[0].comments
+            : "No comments available";
+
+        const formattedProperty = {
+            ...property,
+            images,
+            documents,
+            regulatorComments
+        };
+
+        console.log("Formatted Property Response:", JSON.stringify(formattedProperty, null, 2));
+
+        res.json(formattedProperty);
     } catch (error) {
         console.error("Get Property Details Error:", error);
         res.status(500).json({ message: "Server error" });

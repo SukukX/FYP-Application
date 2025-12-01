@@ -235,6 +235,12 @@ export default function Marketplace() {
                                                     {listing.tokens_available || 0} / {listing.total_tokens}
                                                 </span>
                                             </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-muted-foreground">Reserved</span>
+                                                <span className="font-semibold text-muted-foreground">
+                                                    {listing.total_tokens - (listing.tokens_available || 0)}
+                                                </span>
+                                            </div>
                                         </div>
                                     </CardContent>
 

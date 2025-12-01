@@ -46,6 +46,7 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             property_type,
             valuation,
             total_tokens,
+            tokens_for_sale,
             price_per_token,
             isDraft
         } = req.body;
@@ -68,11 +69,48 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             data: {
                 property_id: property.property_id,
                 total_tokens: parseInt(total_tokens),
-                available_tokens: parseInt(total_tokens),
+                available_tokens: parseInt(tokens_for_sale),
                 token_price: parseFloat(price_per_token),
                 status: "active"
             }
         });
+
+        // Handle File Uploads
+        const files = (req as any).files as { [fieldname: string]: Express.Multer.File[] };
+
+        if (files) {
+            // Handle Images
+            if (files['images']) {
+                for (const file of files['images']) {
+                    await prisma.document.create({
+                        data: {
+                            property_id: property.property_id,
+                            file_name: file.originalname,
+                            file_type: file.mimetype,
+                            file_path: `/uploads/properties/images/${file.filename}`,
+                            file_hash: "pending_hash",
+                            verification_status: VerificationStatusDoc.pending,
+                        },
+                    });
+                }
+            }
+
+            // Handle Legal Documents
+            if (files['documents']) {
+                for (const file of files['documents']) {
+                    await prisma.document.create({
+                        data: {
+                            property_id: property.property_id,
+                            file_name: file.originalname,
+                            file_type: file.mimetype,
+                            file_path: `/uploads/properties/documents/${file.filename}`,
+                            file_hash: "pending_hash",
+                            verification_status: VerificationStatusDoc.pending,
+                        },
+                    });
+                }
+            }
+        }
 
         res.status(201).json(property);
     } catch (error) {
@@ -288,7 +326,7 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// Owner: Delete Property (Draft only)
+// Owner: Delete Property
 export const deleteProperty = async (req: AuthRequest, res: Response) => {
     try {
         const propertyId = parseInt(req.params.id);
@@ -301,6 +339,7 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
 
         const property = await prisma.property.findUnique({
             where: { property_id: propertyId },
+            include: { sukuks: true } // Include sukuks to check token status
         });
 
         if (!property || property.owner_id !== userId) {
@@ -308,12 +347,19 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        if (property.verification_status !== "draft") {
-            res.status(400).json({ message: "Only draft properties can be deleted" });
-            return;
+        // Check if tokens have been sold
+        if (property.sukuks && property.sukuks.length > 0) {
+            const sukuk = property.sukuks[0];
+            if (sukuk.total_tokens !== sukuk.available_tokens) {
+                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold. Please unlive the listing instead." });
+                return;
+            }
         }
 
-        // Delete related records first (if any)
+        // Delete related records first
+        // Note: In a production app with proper cascade delete in DB, this might be simpler.
+        // But here we manually clean up to be safe.
+        await prisma.verificationLog.deleteMany({ where: { property_id: propertyId } });
         await prisma.sukuk.deleteMany({ where: { property_id: propertyId } });
         await prisma.document.deleteMany({ where: { property_id: propertyId } });
 
@@ -321,9 +367,53 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             where: { property_id: propertyId },
         });
 
-        res.json({ message: "Property draft deleted successfully" });
+        res.json({ message: "Property deleted successfully" });
     } catch (error) {
         console.error("Delete Property Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+export const updateTokenSupply = async (req: AuthRequest, res: Response) => {
+    try {
+        const { available_tokens } = req.body;
+        const propertyId = parseInt(req.params.id);
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const property = await prisma.property.findUnique({
+            where: { property_id: propertyId },
+            include: { sukuks: true }
+        });
+
+        if (!property || property.owner_id !== userId) {
+            res.status(404).json({ message: "Property not found or unauthorized" });
+            return;
+        }
+
+        const sukuk = property.sukuks[0];
+        if (!sukuk) {
+            res.status(404).json({ message: "Sukuk not found" });
+            return;
+        }
+
+        if (parseInt(available_tokens) > sukuk.total_tokens) {
+            res.status(400).json({ message: "Available tokens cannot exceed total tokens" });
+            return;
+        }
+
+        const updatedSukuk = await prisma.sukuk.update({
+            where: { sukuk_id: sukuk.sukuk_id },
+            data: { available_tokens: parseInt(available_tokens) }
+        });
+
+        res.json({ message: "Token supply updated", sukuk: updatedSukuk });
+    } catch (error) {
+        console.error("Update Token Supply Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

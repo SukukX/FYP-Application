@@ -93,7 +93,11 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
         const properties = await prisma.property.findMany({
             where: { owner_id: userId },
             orderBy: { created_at: 'desc' },
-            include: { sukuks: true }
+            include: {
+                sukuks: {
+                    include: { investments: true } // Include investments to calculate sold tokens
+                }
+            }
         });
 
         // Calculate Stats
@@ -106,9 +110,12 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
         properties.forEach(p => {
             if (p.sukuks && p.sukuks.length > 0) {
                 const sukuk = p.sukuks[0];
-                const sold = sukuk.total_tokens - sukuk.available_tokens;
-                tokensSold += sold;
-                totalRevenue += sold * parseFloat(sukuk.token_price.toString());
+
+                // Calculate sold tokens from investments
+                const soldForSukuk = sukuk.investments.reduce((sum, inv) => sum + inv.tokens_owned, 0);
+
+                tokensSold += soldForSukuk;
+                totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
             }
         });
 
@@ -121,10 +128,12 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
 
         const formattedProperties = properties.map(p => {
             const sukuk = p.sukuks[0];
+            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => sum + inv.tokens_owned, 0) : 0;
             return {
                 ...p,
                 total_tokens: sukuk ? sukuk.total_tokens : 0,
                 tokens_available: sukuk ? sukuk.available_tokens : 0,
+                tokens_sold: soldForSukuk, // Add tokens_sold to response
                 token_price: sukuk ? sukuk.token_price : 0,
             };
         });
