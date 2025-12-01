@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,31 +11,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { User, LogOut, LayoutDashboard } from "lucide-react";
-import { storage } from "@/lib/mockData";
-import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
 
-export const UserAvatar = ({ user }: { user?: any }) => {
-  const router = useRouter();
-  const { toast } = useToast();
-  const currentUser = user || storage.getUser();
+export const UserAvatar = () => {
+  const { user, logout } = useAuth();
 
-  if (!currentUser) return null;
-
-  const handleLogout = () => {
-    storage.clearUser();
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    router.push("/");
-  };
+  if (!user) return null;
 
   const getInitials = () => {
-    return currentUser.username?.substring(0, 2).toUpperCase() || "U";
+    return user.name?.substring(0, 2).toUpperCase() || "U";
   };
 
   const getDashboardPath = () => {
-    return `/dashboard/${currentUser.role}`;
+    return `/dashboard/${user.role}`;
   };
 
   return (
@@ -51,9 +38,9 @@ export const UserAvatar = ({ user }: { user?: any }) => {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium">{currentUser.username}</p>
-            <p className="text-xs text-muted-foreground">{currentUser.email}</p>
-            <p className="text-xs text-accent capitalize">{currentUser.role}</p>
+            <p className="text-sm font-medium">{user.name}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
+            <p className="text-xs text-accent capitalize">{user.role}</p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -70,7 +57,7 @@ export const UserAvatar = ({ user }: { user?: any }) => {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive">
+        <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive">
           <LogOut className="mr-2 h-4 w-4" />
           Logout
         </DropdownMenuItem>

@@ -9,20 +9,19 @@ import { TrendingUp, Wallet, DollarSign } from "lucide-react";
 import { storage, mockListings } from "@/lib/mockData";
 import Link from "next/link";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { useAuth } from "@/context/auth-context";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--verified))", "#d4af37"];
 
 export default function InvestorPortfolio() {
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const { user: currentUser } = useAuth();
     const [portfolio, setPortfolio] = useState<any[]>([]);
 
     useEffect(() => {
-        const user = storage.getUser();
-        setCurrentUser(user);
-        if (user) {
-            setPortfolio(storage.getPortfolio(user.id));
+        if (currentUser) {
+            setPortfolio(storage.getPortfolio(currentUser.user_id.toString()));
         }
-    }, []);
+    }, [currentUser]);
 
     const totalValue = portfolio.reduce((sum: number, h: any) => sum + h.totalValue, 0);
     const totalTokens = portfolio.reduce((sum: number, h: any) => sum + h.numTokens, 0);

@@ -4,15 +4,10 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Shield } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
-import { storage } from "@/lib/mockData";
-import { useEffect, useState } from "react";
+import { useAuth } from "@/context/auth-context";
 
 export const Navbar = () => {
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    setCurrentUser(storage.getUser());
-  }, []);
+  const { user, loading } = useAuth();
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -38,8 +33,10 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {currentUser ? (
-            <UserAvatar user={currentUser} />
+          {loading ? (
+            <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+          ) : user ? (
+            <UserAvatar />
           ) : (
             <>
               <Link href="/auth/login">

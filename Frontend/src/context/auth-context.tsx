@@ -10,6 +10,8 @@ interface User {
     name: string;
     email: string;
     role: string;
+    kycStatus?: string;
+    walletAddress?: string;
 }
 
 interface AuthContextType {

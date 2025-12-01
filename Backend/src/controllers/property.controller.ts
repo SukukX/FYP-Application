@@ -49,10 +49,19 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                 description,
                 property_type: property_type as PropertyType,
                 valuation: parseFloat(valuation),
-                total_tokens: parseInt(total_tokens),
-                price_per_token: parseFloat(price_per_token),
                 verification_status: VerificationStatus.draft,
             },
+        });
+
+        // Create initial Sukuk offering
+        await prisma.sukuk.create({
+            data: {
+                property_id: property.property_id,
+                total_tokens: parseInt(total_tokens),
+                available_tokens: parseInt(total_tokens),
+                token_price: parseFloat(price_per_token),
+                status: "active"
+            }
         });
 
         res.status(201).json(property);
@@ -92,22 +101,19 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
 
         // Handle Images
         if (files['images']) {
-            const imageUrls = files['images'].map(file => `/uploads/properties/images/${file.filename}`);
-            // Update property images field (assuming it's a JSON or string array in DB, or we store as Documents with type 'image')
-            // For now, let's store them as Documents but mark them as images, OR update the property 'images' field if it exists.
-            // Based on previous schema, let's check if Property has 'images' field. 
-            // If not, we store in Document table.
-
-            // Let's assume we store them in Document table for now to be safe, or update a JSON field.
-            // Ideally, Property model should have `images String[]`.
-
-            // Update Property images field directly if supported
-            await prisma.property.update({
-                where: { property_id: propertyId },
-                data: {
-                    images: imageUrls // Assuming 'images' is a String[] or JSON field
-                }
-            });
+            for (const file of files['images']) {
+                const doc = await prisma.document.create({
+                    data: {
+                        property_id: propertyId,
+                        file_name: file.originalname,
+                        file_type: file.mimetype, // or 'image'
+                        file_path: `/uploads/properties/images/${file.filename}`,
+                        file_hash: "pending_hash",
+                        verification_status: VerificationStatusDoc.pending,
+                    },
+                });
+                uploadedDocs.push(doc);
+            }
         }
 
         // Handle Legal Documents

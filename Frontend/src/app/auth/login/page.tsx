@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 type UserRole = "investor" | "owner" | "regulator";
 
@@ -20,17 +22,35 @@ export default function Login() {
     const router = useRouter();
     const { toast } = useToast();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const { login } = useAuth();
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsLoading(true);
 
-        toast({
-            title: "Login Successful",
-            description: `Welcome back!`,
-        });
+        try {
+            const res = await api.post("/auth/login", { email, password });
+            const { token, user } = res.data;
 
-        setTimeout(() => {
-            router.push(`/dashboard/${role}`);
-        }, 1000);
+            login(token, user);
+
+            toast({
+                title: "Login Successful",
+                description: `Welcome back, ${user.name}!`,
+            });
+
+            // Redirect is handled by AuthContext, but we can ensure it here
+            // router.push(`/dashboard/${user.role}`); 
+        } catch (error: any) {
+            toast({
+                title: "Login Failed",
+                description: error.response?.data?.message || "Invalid credentials",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -66,6 +86,7 @@ export default function Login() {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
+                                    disabled={isLoading}
                                 />
                             </div>
 
@@ -82,11 +103,12 @@ export default function Login() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
+                                    disabled={isLoading}
                                 />
                             </div>
 
-                            <Button type="submit" className="w-full">
-                                Login
+                            <Button type="submit" className="w-full" disabled={isLoading}>
+                                {isLoading ? "Logging in..." : "Login"}
                             </Button>
                         </form>
 

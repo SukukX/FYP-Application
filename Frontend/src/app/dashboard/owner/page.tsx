@@ -12,11 +12,19 @@ import { Plus, Building2, Shield, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
-import { mockListings } from "@/lib/mockData";
+import api from "@/lib/api";
 
 export default function OwnerDashboard() {
     const [listingModalOpen, setListingModalOpen] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
+    const [isLoading, setIsLoading] = useState(true);
+    const [listings, setListings] = useState<any[]>([]);
+    const [stats, setStats] = useState({
+        totalProperties: 0,
+        totalTokensSold: 0,
+        totalRevenue: 0
+    });
+
     const [listingData, setListingData] = useState({
         title: "",
         address: "",
@@ -26,6 +34,27 @@ export default function OwnerDashboard() {
         pricePerToken: "",
     });
     const { toast } = useToast();
+
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await api.get("/dashboard/owner");
+            setListings(res.data.listings);
+            setStats(res.data.stats);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+            toast({
+                title: "Error",
+                description: "Failed to load dashboard data",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleNextStep = () => {
         if (currentStep === 1) {
@@ -50,25 +79,43 @@ export default function OwnerDashboard() {
         setCurrentStep(currentStep + 1);
     };
 
-    const handleSubmitListing = () => {
-        toast({
-            title: "Listing Submitted",
-            description: "Your property listing has been submitted for regulator verification.",
-        });
-        setListingModalOpen(false);
-        setCurrentStep(1);
-        setListingData({
-            title: "",
-            address: "",
-            valuation: "",
-            totalTokens: "",
-            tokensForSale: "",
-            pricePerToken: "",
-        });
-    };
+    const handleSubmitListing = async () => {
+        try {
+            // Create FormData for file upload support (even if we're just sending text for now)
+            // In a real app, we'd append the files here
+            const formData = new FormData();
+            Object.entries(listingData).forEach(([key, value]) => {
+                formData.append(key, value);
+            });
 
-    // Demo listings for owner
-    const ownerListings = mockListings.slice(0, 2);
+            await api.post("/properties", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+
+            toast({
+                title: "Listing Submitted",
+                description: "Your property listing has been submitted for regulator verification.",
+            });
+
+            setListingModalOpen(false);
+            setCurrentStep(1);
+            setListingData({
+                title: "",
+                address: "",
+                valuation: "",
+                totalTokens: "",
+                tokensForSale: "",
+                pricePerToken: "",
+            });
+            fetchDashboardData(); // Refresh data
+        } catch (error: any) {
+            toast({
+                title: "Submission Failed",
+                description: error.response?.data?.message || "Failed to submit listing",
+                variant: "destructive",
+            });
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background">
@@ -94,7 +141,7 @@ export default function OwnerDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">{ownerListings.length}</div>
+                            <div className="text-3xl font-bold text-primary">{stats.totalProperties}</div>
                             <p className="text-xs text-muted-foreground mt-1">Properties listed</p>
                         </CardContent>
                     </Card>
@@ -104,7 +151,7 @@ export default function OwnerDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Tokens Sold</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">450</div>
+                            <div className="text-3xl font-bold text-primary">{stats.totalTokensSold}</div>
                             <p className="text-xs text-muted-foreground mt-1">From all listings</p>
                         </CardContent>
                     </Card>
@@ -114,7 +161,7 @@ export default function OwnerDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">PKR 22.5M</div>
+                            <div className="text-3xl font-bold text-primary">PKR {stats.totalRevenue.toLocaleString()}</div>
                             <p className="text-xs text-muted-foreground mt-1">+12% this month</p>
                         </CardContent>
                     </Card>
@@ -129,18 +176,14 @@ export default function OwnerDashboard() {
                             </CardTitle>
                             <Button onClick={() => setListingModalOpen(true)}>
                                 <Plus className="h-4 w-4 mr-2" />
-                                List Property
+                                Create Listing
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {ownerListings.length === 0 ? (
+                        {listings.length === 0 ? (
                             <div className="text-center py-12">
-                                <Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4 opacity-50" />
-                                <h3 className="text-lg font-semibold text-primary mb-2">No Properties Listed</h3>
-                                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                    Start tokenizing your real estate by creating your first property listing.
-                                </p>
+                                <p className="text-muted-foreground mb-4">You haven't listed any properties yet.</p>
                                 <Button size="lg" onClick={() => setListingModalOpen(true)}>
                                     <Plus className="h-4 w-4 mr-2" />
                                     Create Your First Listing
@@ -148,7 +191,7 @@ export default function OwnerDashboard() {
                             </div>
                         ) : (
                             <div className="grid md:grid-cols-2 gap-4">
-                                {ownerListings.map((listing) => (
+                                {listings.map((listing) => (
                                     <Card key={listing.id} className="border-2 hover:border-accent/50 transition-colors">
                                         <CardContent className="p-4">
                                             <div className="flex items-start justify-between mb-3">
@@ -156,21 +199,20 @@ export default function OwnerDashboard() {
                                                     <h3 className="font-semibold text-primary mb-1">{listing.title}</h3>
                                                     <p className="text-sm text-muted-foreground">{listing.address}</p>
                                                 </div>
-                                                <Badge className="bg-verified text-verified-foreground">
-                                                    <Shield className="h-3 w-3 mr-1" />
-                                                    Approved
+                                                <Badge variant={listing.status === 'approved' ? 'default' : 'secondary'}>
+                                                    {listing.status}
                                                 </Badge>
                                             </div>
 
                                             <div className="space-y-2 mb-4">
                                                 <div className="flex justify-between text-sm">
                                                     <span className="text-muted-foreground">Tokens Available</span>
-                                                    <span className="font-semibold">{listing.tokensAvailable} / {listing.totalTokens}</span>
+                                                    <span className="font-semibold">{listing.tokens_available || 0} / {listing.total_tokens}</span>
                                                 </div>
                                                 <div className="w-full bg-muted rounded-full h-2">
                                                     <div
                                                         className="bg-accent h-2 rounded-full transition-all"
-                                                        style={{ width: `${(listing.tokensAvailable / listing.totalTokens) * 100}%` }}
+                                                        style={{ width: `${((listing.tokens_available || 0) / listing.total_tokens) * 100}%` }}
                                                     />
                                                 </div>
                                             </div>

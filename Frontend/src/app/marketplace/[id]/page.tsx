@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Shield, MapPin, TrendingUp, TrendingDown, FileText, ExternalLink, Wallet } from "lucide-react";
-import { mockListings, storage } from "@/lib/mockData";
 import { useToast } from "@/hooks/use-toast";
 import {
     XAxis,
@@ -22,15 +21,55 @@ import {
     CartesianGrid
 } from "recharts";
 import { Chatbot } from "@/components/Chatbot";
+import api from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 export default function PropertyDetail() {
     const { id } = useParams();
     const { toast } = useToast();
-    const listing = mockListings.find((l) => l.id === id);
+    const { user: currentUser } = useAuth();
+    const [listing, setListing] = useState<any>(null);
     const [buyModalOpen, setBuyModalOpen] = useState(false);
     const [numTokens, setNumTokens] = useState(1);
     const [loading, setLoading] = useState(false);
-    const currentUser = storage.getUser();
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (id) {
+            fetchPropertyDetails();
+        }
+    }, [id]);
+
+    const fetchPropertyDetails = async () => {
+        try {
+            const res = await api.get(`/marketplace/${id}`);
+            setListing(res.data);
+        } catch (error) {
+            console.error("Failed to fetch property details:", error);
+            toast({
+                title: "Error",
+                description: "Failed to load property details",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const getImageUrl = (path: string) => {
+        if (!path) return "";
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const cleanPath = path.startsWith("/") ? path : `/${path}`;
+        return `${baseUrl}${cleanPath}`;
+    };
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
 
     if (!listing) {
         return (
@@ -46,17 +85,17 @@ export default function PropertyDetail() {
         );
     }
 
-    const totalPrice = numTokens * listing.pricePerToken;
+    const totalPrice = numTokens * listing.price_per_token;
     const estimatedFees = totalPrice * 0.02;
 
     // Calculate today's metrics
-    const currentPrice = listing.pricePerToken;
+    const currentPrice = listing.price_per_token;
     const priceHistory = listing.priceHistory || [];
     const todayLow = priceHistory.length > 0
-        ? Math.min(...priceHistory.slice(-7).map(p => p.price))
+        ? Math.min(...priceHistory.slice(-7).map((p: any) => p.price))
         : currentPrice * 0.95;
     const todayHigh = priceHistory.length > 0
-        ? Math.max(...priceHistory.slice(-7).map(p => p.price))
+        ? Math.max(...priceHistory.slice(-7).map((p: any) => p.price))
         : currentPrice * 1.05;
     const roi = priceHistory.length > 1
         ? ((currentPrice - priceHistory[0].price) / priceHistory[0].price) * 100
@@ -93,10 +132,10 @@ export default function PropertyDetail() {
             return;
         }
 
-        if (numTokens > listing.tokensAvailable) {
+        if (numTokens > listing.tokens_available) {
             toast({
                 title: "Insufficient Tokens",
-                description: `Only ${listing.tokensAvailable} tokens available.`,
+                description: `Only ${listing.tokens_available} tokens available.`,
                 variant: "destructive",
             });
             return;
@@ -104,35 +143,28 @@ export default function PropertyDetail() {
 
         setLoading(true);
 
-        // Simulate blockchain transaction
-        setTimeout(() => {
-            const portfolio = storage.getPortfolio(currentUser.id);
-            const existingHolding = portfolio.find((h: any) => h.listingId === listing.id);
-
-            if (existingHolding) {
-                existingHolding.numTokens += numTokens;
-                existingHolding.totalValue = existingHolding.numTokens * listing.pricePerToken;
-            } else {
-                portfolio.push({
-                    listingId: listing.id,
-                    listingTitle: listing.title,
-                    numTokens,
-                    pricePerToken: listing.pricePerToken,
-                    totalValue: totalPrice,
-                    purchaseDate: new Date().toISOString(),
-                });
-            }
-
-            storage.setPortfolio(currentUser.id, portfolio);
-
-            setLoading(false);
-            setBuyModalOpen(false);
+        try {
+            await api.post("/transactions/buy", {
+                propertyId: listing.id,
+                amount: numTokens
+            });
 
             toast({
                 title: "Purchase Successful",
                 description: `Successfully purchased ${numTokens} tokens for PKR ${totalPrice.toLocaleString()}`,
             });
-        }, 2000);
+
+            setBuyModalOpen(false);
+            fetchPropertyDetails(); // Refresh data
+        } catch (error: any) {
+            toast({
+                title: "Purchase Failed",
+                description: error.response?.data?.message || "Transaction failed",
+                variant: "destructive",
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -146,7 +178,7 @@ export default function PropertyDetail() {
                         {/* Image Gallery */}
                         <div className="relative h-96 rounded-lg overflow-hidden">
                             <img
-                                src={listing.images[0]}
+                                src={listing.images && listing.images.length > 0 ? getImageUrl(listing.images[0]) : "/placeholder-property.jpg"}
                                 alt={listing.title}
                                 className="w-full h-full object-cover"
                             />
@@ -214,7 +246,7 @@ export default function PropertyDetail() {
                                 <CardTitle>Legal Documents</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-2">
-                                {listing.documents.map((doc, idx) => (
+                                {listing.documents.map((doc: any, idx: number) => (
                                     <div key={idx} className="flex items-center justify-between p-3 border rounded-lg">
                                         <div className="flex items-center gap-2">
                                             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -282,18 +314,18 @@ export default function PropertyDetail() {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Tokens</span>
-                                    <span className="font-semibold">{listing.totalTokens}</span>
+                                    <span className="font-semibold">{listing.total_tokens}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Available</span>
                                     <span className="font-semibold flex items-center gap-1">
                                         <TrendingUp className="h-3 w-3 text-verified" />
-                                        {listing.tokensAvailable}
+                                        {listing.tokens_available}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">For Sale</span>
-                                    <span className="font-semibold">{listing.tokensForSale} ({((listing.tokensForSale / listing.totalTokens) * 100).toFixed(0)}%)</span>
+                                    <span className="font-semibold">{listing.tokens_for_sale} ({((listing.tokens_for_sale / listing.total_tokens) * 100).toFixed(0)}%)</span>
                                 </div>
 
                                 <div className="pt-4 border-t space-y-2">
@@ -365,7 +397,7 @@ export default function PropertyDetail() {
                         <div className="space-y-2 p-4 bg-accent/10 rounded-lg">
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Price per Token</span>
-                                <span>PKR {listing.pricePerToken.toLocaleString()}</span>
+                                <span>PKR {listing.price_per_token.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Tokens</span>

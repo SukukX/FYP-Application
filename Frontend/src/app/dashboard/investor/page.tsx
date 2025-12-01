@@ -11,21 +11,41 @@ import { Label } from "@/components/ui/label";
 import { TrendingUp, Wallet, Building2, Shield } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import Link from "next/link";
-import { storage } from "@/lib/mockData";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
+import api from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 export default function InvestorDashboard() {
+    const { user: currentUser } = useAuth();
+    const [stats, setStats] = useState({
+        totalInvestment: 0,
+        propertiesOwned: 0,
+        totalTokens: 0
+    });
+    const [portfolio, setPortfolio] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [kycData, setKycData] = useState({ fullName: "", cnic: "", cnicExpiry: "" });
     const [walletAddress, setWalletAddress] = useState("");
     const { toast } = useToast();
-    const [currentUser, setCurrentUser] = useState<any>(null);
 
     useEffect(() => {
-        setCurrentUser(storage.getUser());
+        fetchDashboardData();
     }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await api.get("/dashboard/investor");
+            setStats(res.data.stats);
+            setPortfolio(res.data.portfolio);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const portfolioData = [
         { name: "Residential", value: 40, color: "hsl(var(--primary))" },
@@ -33,7 +53,7 @@ export default function InvestorDashboard() {
         { name: "Industrial", value: 25, color: "hsl(var(--verified))" },
     ];
 
-    const handleKycSubmit = () => {
+    const handleKycSubmit = async () => {
         if (!kycData.fullName || !kycData.cnic || !kycData.cnicExpiry) {
             toast({
                 title: "Incomplete Form",
@@ -43,11 +63,20 @@ export default function InvestorDashboard() {
             return;
         }
 
-        toast({
-            title: "KYC Submitted",
-            description: "Your KYC application has been submitted for verification.",
-        });
-        setKycModalOpen(false);
+        try {
+            await api.post("/kyc/submit", kycData);
+            toast({
+                title: "KYC Submitted",
+                description: "Your KYC application has been submitted for verification.",
+            });
+            setKycModalOpen(false);
+        } catch (error: any) {
+            toast({
+                title: "Submission Failed",
+                description: error.response?.data?.message || "Failed to submit KYC",
+                variant: "destructive",
+            });
+        }
     };
 
     const handleWalletConnect = () => {
@@ -78,9 +107,9 @@ export default function InvestorDashboard() {
                             <h1 className="text-4xl font-bold text-primary mb-2">Investor Dashboard</h1>
                             <p className="text-muted-foreground">Manage your tokenized real estate portfolio</p>
                         </div>
-                        <Badge className="bg-pending text-primary">
+                        <Badge className={`${currentUser?.kycStatus === 'verified' ? 'bg-verified' : 'bg-pending'} text-primary-foreground`}>
                             <Shield className="h-3 w-3 mr-1" />
-                            KYC Pending
+                            {currentUser?.kycStatus === 'verified' ? 'KYC Verified' : 'KYC Pending'}
                         </Badge>
                     </div>
                 </div>
@@ -91,8 +120,10 @@ export default function InvestorDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Total Portfolio Value</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">PKR 0</div>
-                            <p className="text-xs text-muted-foreground mt-1">No holdings yet</p>
+                            <div className="text-3xl font-bold text-primary">PKR {stats.totalInvestment.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                {stats.totalInvestment > 0 ? "Across your portfolio" : "No holdings yet"}
+                            </p>
                         </CardContent>
                     </Card>
 
@@ -101,7 +132,7 @@ export default function InvestorDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Properties Owned</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">0</div>
+                            <div className="text-3xl font-bold text-primary">{stats.propertiesOwned}</div>
                             <p className="text-xs text-muted-foreground mt-1">Start investing today</p>
                         </CardContent>
                     </Card>
@@ -111,7 +142,7 @@ export default function InvestorDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Total Tokens</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-primary">0</div>
+                            <div className="text-3xl font-bold text-primary">{stats.totalTokens}</div>
                             <p className="text-xs text-muted-foreground mt-1">Browse marketplace</p>
                         </CardContent>
                     </Card>

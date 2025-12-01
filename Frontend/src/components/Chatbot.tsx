@@ -6,19 +6,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Mic, Send } from "lucide-react";
 import { storage } from "@/lib/mockData";
+import { useAuth } from "@/context/auth-context";
 
 export const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: "user" | "bot"; text: string }[]>([]);
   const [input, setInput] = useState("");
-  // Ensure we only access storage on the client
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useState(() => {
-    if (typeof window !== 'undefined') {
-      setCurrentUser(storage.getUser());
-    }
-  });
+  const { user: currentUser } = useAuth();
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -32,7 +26,7 @@ export const Chatbot = () => {
 
     if (lowerInput.includes("portfolio") || lowerInput.includes("performance")) {
       if (currentUser && currentUser.role === "investor") {
-        const portfolio = storage.getPortfolio(currentUser.id);
+        const portfolio = storage.getPortfolio(currentUser.user_id.toString());
         botResponse = portfolio.length > 0
           ? `You have ${portfolio.length} holdings. Would you like to view your portfolio dashboard?`
           : "You don't have any holdings yet. Browse our marketplace to start investing!";
@@ -127,8 +121,8 @@ export const Chatbot = () => {
                 >
                   <div
                     className={`max-w-[80%] p-3 rounded-lg ${msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
                       }`}
                   >
                     <p className="text-sm whitespace-pre-line">{msg.text}</p>

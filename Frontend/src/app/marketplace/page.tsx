@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,24 +12,49 @@ import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { mockListings } from "@/lib/mockData";
 import { Chatbot } from "@/components/Chatbot";
+import api from "@/lib/api";
 
 export default function Marketplace() {
+    const [listings, setListings] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [propertyType, setPropertyType] = useState("all");
     const [priceRange, setPriceRange] = useState([0, 100000000]);
     const [tokenRange, setTokenRange] = useState([0, 2000]);
     const [sortBy, setSortBy] = useState("newest");
 
-    const filteredListings = mockListings.filter((listing) => {
+    useEffect(() => {
+        fetchListings();
+    }, []);
+
+    const fetchListings = async () => {
+        try {
+            const res = await api.get("/marketplace");
+            setListings(res.data);
+        } catch (error) {
+            console.error("Failed to fetch listings:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const getImageUrl = (path: string) => {
+        if (!path) return "";
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        // Ensure path starts with / and doesn't duplicate /uploads if already present
+        const cleanPath = path.startsWith("/") ? path : `/${path}`;
+        return `${baseUrl}${cleanPath}`;
+    };
+
+    const filteredListings = listings.filter((listing) => {
         const matchesSearch =
             listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             listing.address.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesPrice =
             listing.valuation >= priceRange[0] && listing.valuation <= priceRange[1];
         const matchesTokens =
-            listing.totalTokens >= tokenRange[0] && listing.totalTokens <= tokenRange[1];
+            listing.total_tokens >= tokenRange[0] && listing.total_tokens <= tokenRange[1];
 
         return matchesSearch && matchesPrice && matchesTokens;
     });
@@ -37,11 +62,11 @@ export default function Marketplace() {
     const sortedListings = [...filteredListings].sort((a, b) => {
         switch (sortBy) {
             case "price-low":
-                return a.pricePerToken - b.pricePerToken;
+                return a.price_per_token - b.price_per_token;
             case "price-high":
-                return b.pricePerToken - a.pricePerToken;
+                return b.price_per_token - a.price_per_token;
             case "tokens":
-                return b.tokensAvailable - a.tokensAvailable;
+                return (b.tokens_available || 0) - (a.tokens_available || 0);
             default:
                 return 0;
         }
@@ -168,7 +193,7 @@ export default function Marketplace() {
                                 >
                                     <div className="relative h-48 overflow-hidden">
                                         <img
-                                            src={listing.images[0]}
+                                            src={listing.images && listing.images.length > 0 ? getImageUrl(listing.images[0]) : "/placeholder-property.jpg"}
                                             alt={listing.title}
                                             className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
                                         />
@@ -199,7 +224,7 @@ export default function Marketplace() {
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-muted-foreground">Token Price</span>
                                                 <span className="font-semibold text-accent">
-                                                    PKR {(listing.pricePerToken / 1000).toFixed(0)}K
+                                                    PKR {(listing.price_per_token / 1000).toFixed(0)}K
                                                 </span>
                                             </div>
 
@@ -207,7 +232,7 @@ export default function Marketplace() {
                                                 <span className="text-muted-foreground">Available</span>
                                                 <span className="font-semibold flex items-center gap-1">
                                                     <TrendingUp className="h-3 w-3 text-verified" />
-                                                    {listing.tokensAvailable} / {listing.totalTokens}
+                                                    {listing.tokens_available || 0} / {listing.total_tokens}
                                                 </span>
                                             </div>
                                         </div>

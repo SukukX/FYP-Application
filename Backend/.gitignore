@@ -7,3 +7,4 @@ node_modules
 # Ignore uploaded files but keep the directory
 uploads/*
 !uploads/.gitkeep
+dist

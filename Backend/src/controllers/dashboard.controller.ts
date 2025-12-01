@@ -61,9 +61,9 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
 
         // Mock Data for now
         const stats = {
-            totalPortfolioValue: 0,
-            totalTokensOwned: 0,
-            propertiesCount: 0,
+            totalInvestment: 0,
+            totalTokens: 0,
+            propertiesOwned: 0,
             totalProfitEarned: 0,
         };
 

@@ -10,17 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
 import { Building2, User, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 
 type UserRole = "investor" | "owner" | "regulator";
 
 export default function Register() {
     const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
     const [formData, setFormData] = useState({
-        username: "",
+        name: "",
         email: "",
         password: "",
         confirmPassword: "",
-        fullName: "",
+        phone_number: "",
         dob: "",
         cnic: "",
     });
@@ -31,8 +33,12 @@ export default function Register() {
         setSelectedRole(role);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const { login } = useAuth();
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsLoading(true);
 
         // Client-side validation
         if (!selectedRole) {
@@ -41,6 +47,7 @@ export default function Register() {
                 description: "Please select your account type",
                 variant: "destructive",
             });
+            setIsLoading(false);
             return;
         }
 
@@ -50,19 +57,38 @@ export default function Register() {
                 description: "Passwords do not match",
                 variant: "destructive",
             });
+            setIsLoading(false);
             return;
         }
 
-        // Mock registration success
-        toast({
-            title: "Account Created",
-            description: "Your account has been created successfully. Please verify your identity.",
-        });
+        try {
+            const res = await api.post("/auth/register", {
+                name: formData.name,
+                email: formData.email,
+                password: formData.password,
+                role: selectedRole,
+                phone_number: formData.phone_number,
+                cnic: formData.cnic,
+            });
+            const { token, user } = res.data;
 
-        // Navigate to dashboard based on role
-        setTimeout(() => {
-            router.push(`/dashboard/${selectedRole}`);
-        }, 1500);
+            login(token, user);
+
+            toast({
+                title: "Account Created",
+                description: "Your account has been created successfully.",
+            });
+
+            // Redirect is handled by AuthContext
+        } catch (error: any) {
+            toast({
+                title: "Registration Failed",
+                description: error.response?.data?.message || "Something went wrong",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     if (!selectedRole) {
@@ -170,22 +196,22 @@ export default function Register() {
                         <CardContent>
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="fullName">Full Legal Name *</Label>
+                                    <Label htmlFor="name">Full Name *</Label>
                                     <Input
-                                        id="fullName"
-                                        value={formData.fullName}
-                                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                                        id="name"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                         required
                                     />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="username">Username *</Label>
+                                    <Label htmlFor="phone_number">Phone Number</Label>
                                     <Input
-                                        id="username"
-                                        value={formData.username}
-                                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                        required
+                                        id="phone_number"
+                                        value={formData.phone_number}
+                                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                                        placeholder="+92 300 1234567"
                                     />
                                 </div>
 
@@ -247,8 +273,8 @@ export default function Register() {
                                     />
                                 </div>
 
-                                <Button type="submit" className="w-full">
-                                    Create Account
+                                <Button type="submit" className="w-full" disabled={isLoading}>
+                                    {isLoading ? "Creating Account..." : "Create Account"}
                                 </Button>
 
                                 <Button

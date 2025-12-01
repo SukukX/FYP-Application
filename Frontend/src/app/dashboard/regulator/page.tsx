@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,36 +10,69 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Shield, FileCheck, Users, AlertCircle, CheckCircle, XCircle } from "lucide-react";
-import { mockKYCQueue, mockPendingListings } from "@/lib/mockData";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
+import api from "@/lib/api";
 
 export default function RegulatorDashboard() {
-    const [kycQueue] = useState(mockKYCQueue);
-    const [listingQueue] = useState(mockPendingListings);
+    const [kycQueue, setKycQueue] = useState<any[]>([]);
+    const [listingQueue, setListingQueue] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const [reviewType, setReviewType] = useState<"kyc" | "listing">("kyc");
     const [reviewComments, setReviewComments] = useState("");
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const { toast } = useToast();
 
-    const handleApprove = (item: any, type: "kyc" | "listing") => {
-        if (type === "kyc") {
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await api.get("/dashboard/regulator");
+            setKycQueue(res.data.kycQueue);
+            setListingQueue(res.data.pendingListings);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
             toast({
-                title: "KYC Approved",
-                description: `${item.username}'s KYC has been approved.`,
+                title: "Error",
+                description: "Failed to load dashboard data",
+                variant: "destructive",
             });
-        } else {
-            toast({
-                title: "Listing Approved",
-                description: `${item.title} has been approved for marketplace.`,
-            });
+        } finally {
+            setIsLoading(false);
         }
-        setReviewModalOpen(false);
-        setReviewComments("");
     };
 
-    const handleReject = (item: any, type: "kyc" | "listing") => {
+    const handleApprove = async (item: any, type: "kyc" | "listing") => {
+        try {
+            if (type === "kyc") {
+                await api.post("/kyc/approve", { userId: item.userId });
+                toast({
+                    title: "KYC Approved",
+                    description: `${item.username}'s KYC has been approved.`,
+                });
+            } else {
+                await api.post(`/properties/${item.id}/verify`, { status: "approved" });
+                toast({
+                    title: "Listing Approved",
+                    description: `${item.title} has been approved for marketplace.`,
+                });
+            }
+            setReviewModalOpen(false);
+            setReviewComments("");
+            fetchDashboardData(); // Refresh data
+        } catch (error: any) {
+            toast({
+                title: "Action Failed",
+                description: error.response?.data?.message || "Failed to approve",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleReject = async (item: any, type: "kyc" | "listing") => {
         if (!reviewComments.trim()) {
             toast({
                 title: "Comments Required",
@@ -49,21 +82,32 @@ export default function RegulatorDashboard() {
             return;
         }
 
-        if (type === "kyc") {
+        try {
+            if (type === "kyc") {
+                await api.post("/kyc/reject", { userId: item.userId, comments: reviewComments });
+                toast({
+                    title: "KYC Rejected",
+                    description: `${item.username}'s KYC has been rejected.`,
+                    variant: "destructive",
+                });
+            } else {
+                await api.post(`/properties/${item.id}/verify`, { status: "rejected", comments: reviewComments });
+                toast({
+                    title: "Listing Rejected",
+                    description: `${item.title} has been rejected.`,
+                    variant: "destructive",
+                });
+            }
+            setReviewModalOpen(false);
+            setReviewComments("");
+            fetchDashboardData(); // Refresh data
+        } catch (error: any) {
             toast({
-                title: "KYC Rejected",
-                description: `${item.username}'s KYC has been rejected.`,
-                variant: "destructive",
-            });
-        } else {
-            toast({
-                title: "Listing Rejected",
-                description: `${item.title} has been rejected.`,
+                title: "Action Failed",
+                description: error.response?.data?.message || "Failed to reject",
                 variant: "destructive",
             });
         }
-        setReviewModalOpen(false);
-        setReviewComments("");
     };
 
     const openReviewModal = (item: any, type: "kyc" | "listing") => {
