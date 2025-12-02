@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export class AuthService {
     async register(data: any) {
@@ -47,6 +47,10 @@ export class AuthService {
     }
 
     private generateToken(user: User) {
+        if (!JWT_SECRET) {
+            throw new Error("JWT_SECRET is not defined in environment variables");
+        }
+
         const token = jwt.sign(
             { user_id: user.user_id, email: user.email, role: user.role },
             JWT_SECRET,
