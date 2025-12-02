@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 
 // Configure Multer for Property Documents
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
+    destination: (req: any, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
         let uploadPath = path.join(__dirname, "../../uploads");
         if (file.fieldname === "images") {
             uploadPath = path.join(uploadPath, "properties/images");
@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
         }
         cb(null, uploadPath);
     },
-    filename: (req, file, cb) => {
+    filename: (req: any, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
         const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
         cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
     },
