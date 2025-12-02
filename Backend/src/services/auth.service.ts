@@ -14,6 +14,13 @@ export class AuthService {
             throw new Error("User already exists");
         }
 
+        if (cnic) {
+            const existingCnic = await prisma.user.findUnique({ where: { cnic } });
+            if (existingCnic) {
+                throw new Error("CNIC already exists");
+            }
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const user = await prisma.user.create({

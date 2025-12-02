@@ -5,9 +5,11 @@ const authService = new AuthService();
 
 export const register = async (req: Request, res: Response) => {
     try {
+        // console.log("Register Request Body:", req.body);
         const result = await authService.register(req.body);
         res.status(201).json(result);
     } catch (error: any) {
+        // console.error("Register Error:", error);
         res.status(400).json({ message: error.message });
     }
 };
