@@ -58,7 +58,7 @@ export default function PropertyDetail() {
 
     const getImageUrl = (path: string) => {
         if (!path) return "";
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
         return `${baseUrl}${cleanPath}`;
     };

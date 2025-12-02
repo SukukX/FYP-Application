@@ -41,7 +41,7 @@ export default function Marketplace() {
 
     const getImageUrl = (path: string) => {
         if (!path) return "";
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         // Ensure path starts with / and doesn't duplicate /uploads if already present
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
         return `${baseUrl}${cleanPath}`;
