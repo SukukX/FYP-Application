@@ -24,6 +24,6 @@ router.delete("/:id", authenticate, authorize(["owner"]), deleteProperty);
 router.get("/my", authenticate, authorize(["owner"]), getMyProperties);
 
 // Regulator Routes
-router.patch("/:id/verify", authenticate, authorize(["regulator", "admin"]), verifyProperty);
+router.patch("/:id/verify", authenticate, authorize(["regulator", "admin"]), uploadPropertyDocs.single('proof'), verifyProperty);
 
 export default router;

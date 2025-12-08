@@ -249,14 +249,14 @@ export const getMyProperties = async (req: AuthRequest, res: Response) => {
 };
 
 // Regulator: Verify Property
-// Regulator: Verify Property
-// Regulator: Verify Property
 export const verifyProperty = async (req: AuthRequest, res: Response) => {
     try {
-
         const { status, remarks } = req.body; // approved, rejected
         const propertyId = parseInt(req.params.id);
         const regulatorId = req.user?.user_id;
+
+        // Handle Proof File
+        const proofFile = (req as any).file as Express.Multer.File; // Single file 'proof'
 
         if (!regulatorId) {
 
@@ -265,9 +265,23 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
         }
 
         if (!["approved", "rejected"].includes(status)) {
-
             res.status(400).json({ message: "Invalid status" });
             return;
+        }
+
+        // Upload Proof Document if present
+        if (proofFile) {
+            await prisma.document.create({
+                data: {
+                    property_id: propertyId,
+                    file_name: proofFile.originalname,
+                    file_type: "proof", // Special type for proof docs
+                    file_path: `/uploads/properties/documents/${proofFile.filename}`,
+                    file_hash: "proof_hash",
+                    verification_status: VerificationStatusDoc.verified, // Auto-verified since uploaded by regulator
+                    verified_by: regulatorId
+                }
+            });
         }
 
         // Update Property Status

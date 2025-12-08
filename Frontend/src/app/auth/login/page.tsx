@@ -7,16 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
-type UserRole = "investor" | "owner" | "regulator";
+
 
 export default function Login() {
-    const [role, setRole] = useState<UserRole>("investor");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const router = useRouter();
@@ -65,20 +64,6 @@ export default function Login() {
                     <CardContent>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="role">Account Type *</Label>
-                                <Select value={role} onValueChange={(value: UserRole) => setRole(value)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select your role" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="investor">Investor</SelectItem>
-                                        <SelectItem value="owner">Property Owner</SelectItem>
-                                        <SelectItem value="regulator">Regulator</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
                                 <Label htmlFor="email">Email or Username *</Label>
                                 <Input
                                     id="email"
@@ -87,6 +72,8 @@ export default function Login() {
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
                                     disabled={isLoading}
+                                    className="h-11"
+                                    placeholder="Enter your email"
                                 />
                             </div>
 
@@ -104,10 +91,12 @@ export default function Login() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
                                     disabled={isLoading}
+                                    className="h-11"
+                                    placeholder="Enter your password"
                                 />
                             </div>
 
-                            <Button type="submit" className="w-full" disabled={isLoading}>
+                            <Button type="submit" className="w-full h-11 text-base" disabled={isLoading}>
                                 {isLoading ? "Logging in..." : "Login"}
                             </Button>
                         </form>

@@ -14,6 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+
 export default function RegulatorDashboard() {
     const [kycQueue, setKycQueue] = useState<any[]>([]);
     const [listingQueue, setListingQueue] = useState<any[]>([]);
@@ -21,8 +24,15 @@ export default function RegulatorDashboard() {
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const [reviewType, setReviewType] = useState<"kyc" | "listing">("kyc");
     const [reviewComments, setReviewComments] = useState("");
+    const [proofFile, setProofFile] = useState<File | null>(null);
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const { toast } = useToast();
+    const [stats, setStats] = useState({
+        pendingKYC: 0,
+        pendingListings: 0,
+        approvedUsers: 0,
+        approvedListings: 0
+    });
 
     useEffect(() => {
         fetchDashboardData();
@@ -33,6 +43,7 @@ export default function RegulatorDashboard() {
             const res = await api.get("/dashboard/regulator");
             setKycQueue(res.data.kycQueue);
             setListingQueue(res.data.listingQueue || []);
+            setStats(res.data.stats);
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast({
@@ -54,7 +65,14 @@ export default function RegulatorDashboard() {
                     description: `${item.user?.name}'s KYC has been approved.`,
                 });
             } else {
-                await api.patch(`/properties/${item.property_id}/verify`, { status: "approved" });
+                const formData = new FormData();
+                formData.append("status", "approved");
+                if (proofFile) formData.append("proof", proofFile);
+                if (reviewComments) formData.append("remarks", reviewComments);
+
+                await api.patch(`/properties/${item.property_id}/verify`, formData, {
+                    headers: { "Content-Type": "multipart/form-data" }
+                });
                 toast({
                     title: "Listing Approved",
                     description: `${item.title} has been approved for marketplace.`,
@@ -62,6 +80,7 @@ export default function RegulatorDashboard() {
             }
             setReviewModalOpen(false);
             setReviewComments("");
+            setProofFile(null);
             fetchDashboardData(); // Refresh data
         } catch (error: any) {
             console.error("Handle Approve Error:", error);
@@ -92,7 +111,14 @@ export default function RegulatorDashboard() {
                     variant: "destructive",
                 });
             } else {
-                await api.patch(`/properties/${item.property_id}/verify`, { status: "rejected", comments: reviewComments });
+                const formData = new FormData();
+                formData.append("status", "rejected");
+                formData.append("remarks", reviewComments);
+                if (proofFile) formData.append("proof", proofFile);
+
+                await api.patch(`/properties/${item.property_id}/verify`, formData, {
+                    headers: { "Content-Type": "multipart/form-data" }
+                });
                 toast({
                     title: "Listing Rejected",
                     description: `${item.title} has been rejected.`,
@@ -101,6 +127,7 @@ export default function RegulatorDashboard() {
             }
             setReviewModalOpen(false);
             setReviewComments("");
+            setProofFile(null);
             fetchDashboardData(); // Refresh data
         } catch (error: any) {
             toast({
@@ -153,17 +180,17 @@ export default function RegulatorDashboard() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Approved Users</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-verified">23</div>
+                            <div className="text-3xl font-bold text-verified">{stats.approvedUsers}</div>
                             <p className="text-xs text-muted-foreground mt-1">Verified accounts</p>
                         </CardContent>
                     </Card>
 
                     <Card className="animate-slide-up" style={{ animationDelay: "300ms" }}>
                         <CardHeader className="pb-3">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Approved Listings</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold text-verified">12</div>
+                            <div className="text-3xl font-bold text-verified">{stats.approvedListings}</div>
                             <p className="text-xs text-muted-foreground mt-1">Live on marketplace</p>
                         </CardContent>
                     </Card>
@@ -351,43 +378,110 @@ export default function RegulatorDashboard() {
                     <div className="space-y-4 py-4">
                         {selectedItem && (
                             <>
-                                <div className="space-y-2 p-4 bg-muted rounded-lg">
-                                    {reviewType === "kyc" ? (
-                                        <>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Name</span>
-                                                <span className="font-semibold">{selectedItem.user?.name}</span>
+                                {reviewType === "listing" && (
+                                    <>
+                                        {selectedItem.documents?.filter((d: any) => d.file_type.startsWith("image/")).length > 0 && (
+                                            <div className="mb-4">
+                                                <span className="text-sm font-semibold text-muted-foreground block mb-2">Property Images</span>
+                                                <div className="flex gap-2 overflow-x-auto pb-2">
+                                                    {selectedItem.documents.filter((d: any) => d.file_type.startsWith("image/")).map((img: any, i: number) => (
+                                                        <div key={i} className="h-24 w-32 flex-shrink-0 relative rounded-md overflow-hidden border">
+                                                            <img src={`${API_URL}${img.file_path}`} alt={`Property ${i}`} className="object-cover w-full h-full" />
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Email</span>
-                                                <span className="font-semibold">{selectedItem.user?.email}</span>
+                                        )}
+
+                                        <div className="space-y-3 p-4 bg-muted rounded-lg mb-4">
+                                            <h4 className="font-semibold text-primary">Property Details</h4>
+                                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <span className="text-muted-foreground block">Title</span>
+                                                    <span className="font-medium">{selectedItem.title}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-muted-foreground block">Location</span>
+                                                    <span className="font-medium">{selectedItem.location}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-muted-foreground block">Valuation</span>
+                                                    <span className="font-medium">PKR {(selectedItem.valuation / 1000000).toFixed(1)}M</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-muted-foreground block">Total Tokens</span>
+                                                    <span className="font-medium">{selectedItem.sukuks?.[0]?.total_tokens || "N/A"}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">CNIC</span>
-                                                <span className="font-semibold">{selectedItem.cnic_number}</span>
+                                            <div>
+                                                <span className="text-muted-foreground block text-sm">Description</span>
+                                                <p className="text-sm mt-1">{selectedItem.description}</p>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Role</span>
-                                                <span className="font-semibold capitalize">{selectedItem.user?.role}</span>
+                                        </div>
+
+                                        {selectedItem.documents?.filter((d: any) => !d.file_type.startsWith("image/")).length > 0 && (
+                                            <div className="mb-4 space-y-2">
+                                                <span className="text-sm font-semibold text-muted-foreground block">Legal Documents</span>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {selectedItem.documents.filter((d: any) => !d.file_type.startsWith("image/")).map((doc: any, i: number) => (
+                                                        <a
+                                                            key={i}
+                                                            href={`${API_URL}${doc.file_path}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center p-2 border rounded hover:bg-muted text-sm text-primary transition-colors"
+                                                        >
+                                                            <FileCheck className="h-4 w-4 mr-2" />
+                                                            {doc.file_name}
+                                                        </a>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Property</span>
-                                                <span className="font-semibold">{selectedItem.title}</span>
+                                        )}
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="proof">Proof of Verification / Rejection (Optional)</Label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="file"
+                                                    id="proof"
+                                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                                                />
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Valuation</span>
-                                                <span className="font-semibold">PKR {(selectedItem.valuation / 1000000).toFixed(1)}M</span>
+                                            <p className="text-xs text-muted-foreground">Upload FBR report or other verification docs.</p>
+                                        </div>
+                                    </>
+                                )}
+
+                                {reviewType === "kyc" && (
+                                    <div className="space-y-2 p-4 bg-muted rounded-lg">
+                                        {/* Existing KYC Details */}
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Name</span>
+                                            <span className="font-semibold">{selectedItem.user?.name}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Email</span>
+                                            <span className="font-semibold">{selectedItem.user?.email}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">CNIC</span>
+                                            <span className="font-semibold">{selectedItem.cnic_number}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Role</span>
+                                            <span className="font-semibold capitalize">{selectedItem.user?.role}</span>
+                                        </div>
+                                        {/* Add Image Links for KYC too if possible */}
+                                        {selectedItem.cnic_front && (
+                                            <div className="mt-2">
+                                                <span className="text-xs text-muted-foreground block mb-1">CNIC Front</span>
+                                                <img src={`${API_URL}${selectedItem.cnic_front}`} alt="CNIC Front" className="h-24 rounded border object-cover" />
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">Total Tokens</span>
-                                                <span className="font-semibold">{selectedItem.sukuks?.[0]?.total_tokens || "N/A"}</span>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="comments">Comments / Reason</Label>
@@ -396,7 +490,7 @@ export default function RegulatorDashboard() {
                                         value={reviewComments}
                                         onChange={(e) => setReviewComments(e.target.value)}
                                         placeholder="Add comments or reason for rejection..."
-                                        rows={4}
+                                        rows={3}
                                     />
                                 </div>
                             </>
@@ -422,6 +516,6 @@ export default function RegulatorDashboard() {
             </Dialog>
 
             <Chatbot />
-        </div>
+        </div >
     );
 }

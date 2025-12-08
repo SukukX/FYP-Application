@@ -96,7 +96,12 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             include: {
                 sukuks: {
                     include: { investments: true } // Include investments to calculate sold tokens
-                }
+                },
+                verification_logs: {
+                    orderBy: { timestamp: 'desc' },
+                    take: 1
+                },
+                documents: true
             }
         });
 
@@ -173,7 +178,9 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             pendingKYC,
             pendingListings,
             totalUsers: await prisma.user.count(),
+            approvedUsers: await prisma.user.count({ where: { role: { not: "guest" }, kyc_request: { status: "approved" } } }),
             activeSukuks: await prisma.sukuk.count({ where: { status: "active" } }),
+            approvedListings: await prisma.property.count({ where: { verification_status: "approved" } }),
         };
 
         // Fetch Queues
@@ -190,7 +197,8 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             orderBy: { created_at: 'asc' },
             include: {
                 owner: { select: { name: true, email: true } },
-                sukuks: { select: { total_tokens: true } }
+                sukuks: { select: { total_tokens: true } },
+                documents: true // Include documents for review
             }
         });
 

@@ -4,19 +4,21 @@ import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Building2, SlidersHorizontal, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { Plus, Building2, Shield, ArrowRight, ArrowLeft, SlidersHorizontal, Lock, CheckCircle, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { KYCWizard } from "@/components/KYCWizard";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function OwnerDashboard() {
     const [listingModalOpen, setListingModalOpen] = useState(false);
@@ -31,6 +33,9 @@ export default function OwnerDashboard() {
     const [kycStatus, setKycStatus] = useState("not_submitted");
     const [mfaEnabled, setMfaEnabled] = useState(false);
     const [kycModalOpen, setKycModalOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+    const [selectedRejection, setSelectedRejection] = useState<any>(null);
     const router = useRouter();
 
     const [listingData, setListingData] = useState({
@@ -116,6 +121,8 @@ export default function OwnerDashboard() {
     };
 
     const handleSubmitListing = async (isDraft = false) => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const formData = new FormData();
             formData.append("title", listingData.title);
@@ -167,6 +174,8 @@ export default function OwnerDashboard() {
                 description: error.response?.data?.message || "Failed to submit listing",
                 variant: "destructive",
             });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -266,151 +275,199 @@ export default function OwnerDashboard() {
                         ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 {listings.map((listing) => (
-                                    <Card key={listing.property_id} className="border-2 hover:border-accent/50 transition-colors">
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start justify-between mb-3">
+                                    <Card key={listing.property_id} className="group overflow-hidden border hover:border-accent/50 transition-all duration-300">
+                                        <div className="flex flex-col md:flex-row h-full">
+                                            {/* Image Section */}
+                                            <div className="w-full md:w-48 h-48 md:h-auto relative bg-muted flex-shrink-0">
+                                                {listing.documents?.find((d: any) => d.file_type.startsWith('image/')) ? (
+                                                    <img
+                                                        src={`${API_URL}${listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path}`}
+                                                        alt={listing.title}
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                    />
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+                                                        <Building2 className="h-8 w-8 mb-2 opacity-50" />
+                                                        <span className="text-xs">No Image</span>
+                                                    </div>
+                                                )}
+                                                <div className="absolute top-2 left-2">
+                                                    <Badge variant={listing.verification_status === 'approved' ? 'default' : listing.verification_status === 'rejected' ? 'destructive' : 'secondary'} className="shadow-sm">
+                                                        {listing.verification_status}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+
+                                            {/* Content Section */}
+                                            <CardContent className="flex-1 p-4 md:p-6 flex flex-col justify-between">
                                                 <div>
-                                                    <h3 className="font-semibold text-primary mb-1">{listing.title}</h3>
-                                                    <p className="text-sm text-muted-foreground">{listing.location}</p>
-                                                </div>
-                                                <Badge variant={listing.verification_status === 'approved' ? 'default' : 'secondary'}>
-                                                    {listing.verification_status}
-                                                </Badge>
-                                            </div>
+                                                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 mb-2">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="font-bold text-lg text-primary line-clamp-1">{listing.title}</h3>
+                                                                {listing.listing_status === 'active' && <Badge variant="outline" className="text-xs border-success text-success">Live</Badge>}
+                                                            </div>
+                                                            <p className="text-sm text-muted-foreground line-clamp-1">{listing.location}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="font-bold text-primary">{parseFloat(listing.valuation).toLocaleString()} PKR</p>
+                                                            <p className="text-xs text-muted-foreground">Valuation</p>
+                                                        </div>
+                                                    </div>
 
-                                            <div className="space-y-2 mb-4">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-muted-foreground">Token Distribution</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-semibold text-xs">
-                                                            {listing.tokens_sold || 0} Sold | {listing.tokens_available || 0} Avail | {listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)} Rsrv
-                                                        </span>
-                                                        {listing.listing_status === 'active' && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0"
-                                                                onClick={() => handleUpdateSupply(listing.property_id, listing.tokens_available, listing.total_tokens)}
-                                                            >
-                                                                <SlidersHorizontal className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
+                                                    {/* Progress Bar & Stats */}
+                                                    <div className="mt-4 space-y-2">
+                                                        <div className="flex justify-between text-sm items-end">
+                                                            <span className="text-muted-foreground font-medium">Token Distribution</span>
+                                                            {listing.listing_status === 'active' && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 px-2 text-xs text-muted-foreground hover:text-primary"
+                                                                    onClick={() => handleUpdateSupply(listing.property_id, listing.tokens_available, listing.total_tokens)}
+                                                                >
+                                                                    Manage Supply
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                        <div className="w-full bg-muted/50 rounded-full h-2.5 flex overflow-hidden border border-border/50">
+                                                            {/* Sold Tokens - Primary Blue (Solid/Done) */}
+                                                            <div
+                                                                className="bg-primary h-full transition-all duration-500"
+                                                                style={{ width: `${((listing.tokens_sold || 0) / listing.total_tokens) * 100}%` }}
+                                                                title={`${listing.tokens_sold || 0} Sold`}
+                                                            />
+                                                            {/* Available Tokens - Accent Gold (Opportunity) */}
+                                                            <div
+                                                                className="bg-accent h-full transition-all duration-500"
+                                                                style={{ width: `${((listing.tokens_available || 0) / listing.total_tokens) * 100}%` }}
+                                                                title={`${listing.tokens_available || 0} Available`}
+                                                            />
+                                                            {/* Reserved - Slate (Inactive) */}
+                                                            <div
+                                                                className="bg-slate-300 dark:bg-slate-700 h-full transition-all duration-500"
+                                                                style={{ width: `${((listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)) / listing.total_tokens) * 100}%` }}
+                                                                title="Reserved"
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary" /> {listing.tokens_sold || 0} Sold</span>
+                                                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-accent" /> {listing.tokens_available || 0} Avail</span>
+                                                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700" /> {listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)} Rsrv</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="w-full bg-muted rounded-full h-2 flex overflow-hidden">
-                                                    {/* Sold Tokens - Green */}
-                                                    <div
-                                                        className="bg-green-500 h-2 transition-all"
-                                                        style={{ width: `${((listing.tokens_sold || 0) / listing.total_tokens) * 100}%` }}
-                                                        title="Sold"
-                                                    />
-                                                    {/* Available Tokens - Blue (Accent) */}
-                                                    <div
-                                                        className="bg-accent h-2 transition-all"
-                                                        style={{ width: `${((listing.tokens_available || 0) / listing.total_tokens) * 100}%` }}
-                                                        title="Available for Sale"
-                                                    />
-                                                    {/* Reserved Tokens - Orange */}
-                                                    <div
-                                                        className="bg-orange-400 h-2 transition-all"
-                                                        style={{ width: `${((listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0)) / listing.total_tokens) * 100}%` }}
-                                                        title="Reserved"
-                                                    />
-                                                </div>
-                                            </div>
 
-                                            <div className="flex gap-2">
-                                                {listing.verification_status === 'draft' && (
-                                                    <Button className="flex-1" onClick={() => {
-                                                        // Load draft data
-                                                        setListingData({
-                                                            title: listing.title,
-                                                            address: listing.location,
-                                                            propertyType: listing.property_type,
-                                                            description: listing.description || "",
-                                                            valuation: listing.valuation.toString(),
-                                                            totalTokens: listing.sukuks?.[0]?.total_tokens?.toString() || "",
-                                                            tokensForSale: listing.sukuks?.[0]?.available_tokens?.toString() || "",
-                                                            pricePerToken: listing.sukuks?.[0]?.token_price?.toString() || "",
-                                                        });
-                                                        setListingModalOpen(true);
-                                                    }}>
-                                                        Complete Listing
-                                                    </Button>
-                                                )}
+                                                {/* Actions */}
+                                                <div className="flex gap-2 flex-wrap items-center mt-4 pt-4 border-t border-border/50">
+                                                    {listing.verification_status === 'draft' && (
+                                                        <Button className="flex-1" size="sm" onClick={() => {
+                                                            setListingData({
+                                                                title: listing.title,
+                                                                address: listing.location,
+                                                                propertyType: listing.property_type,
+                                                                description: listing.description || "",
+                                                                valuation: listing.valuation.toString(),
+                                                                totalTokens: listing.sukuks?.[0]?.total_tokens?.toString() || "",
+                                                                tokensForSale: listing.sukuks?.[0]?.available_tokens?.toString() || "",
+                                                                pricePerToken: listing.sukuks?.[0]?.token_price?.toString() || "",
+                                                            });
+                                                            setListingModalOpen(true);
+                                                        }}>
+                                                            Complete Listing
+                                                        </Button>
+                                                    )}
 
-                                                {listing.verification_status === 'pending' && (
-                                                    <Button variant="secondary" className="w-full" disabled>
-                                                        Waiting for Approval
-                                                    </Button>
-                                                )}
+                                                    {listing.verification_status === 'pending' && (
+                                                        <Button variant="secondary" className="w-full opacity-70" size="sm" disabled>
+                                                            <Clock className="w-3 h-3 mr-2" /> Waiting for Approval
+                                                        </Button>
+                                                    )}
 
-                                                {listing.verification_status === 'approved' && listing.listing_status !== 'active' && (
-                                                    <Button className="w-full" onClick={async () => {
-                                                        try {
-                                                            await api.patch(`/properties/${listing.property_id}/status`, { status: "active" });
-                                                            toast({ title: "Success", description: "Property is now live!" });
-                                                            fetchDashboardData();
-                                                        } catch (e) {
-                                                            toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
-                                                        }
-                                                    }}>
-                                                        Make Live
-                                                    </Button>
-                                                )}
-
-                                                {(listing.listing_status === 'active' || listing.verification_status === 'rejected') && (
-                                                    <div className="flex gap-2 w-full">
-                                                        <Link href={`/marketplace/${listing.property_id}`} className="flex-1">
-                                                            <Button variant="outline" className="w-full">
-                                                                {listing.listing_status === 'active' ? 'View' : 'View Details'}
-                                                            </Button>
-                                                        </Link>
-                                                        {listing.listing_status === 'active' && (
-                                                            <Button
-                                                                variant="destructive"
-                                                                className="flex-1"
-                                                                onClick={async () => {
-                                                                    if (confirm("Are you sure you want to unlive this listing?")) {
-                                                                        try {
-                                                                            await api.patch(`/properties/${listing.property_id}/status`, { status: "hidden" });
-                                                                            toast({ title: "Success", description: "Listing is now hidden." });
-                                                                            fetchDashboardData();
-                                                                        } catch (e: any) {
-                                                                            toast({
-                                                                                title: "Action Failed",
-                                                                                description: e.response?.data?.message || "Failed to unlive listing",
-                                                                                variant: "destructive"
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                }}
-                                                            >
-                                                                Unlive
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Delete Button for all listings */}
-                                                {listing.verification_status !== 'pending' && (
-                                                    <Button variant="destructive" size="icon" onClick={async () => {
-                                                        if (confirm("Are you sure you want to delete this property? This action cannot be undone.")) {
+                                                    {listing.verification_status === 'approved' && listing.listing_status !== 'active' && (
+                                                        <Button className="flex-1" size="sm" onClick={async () => {
                                                             try {
-                                                                await api.delete(`/properties/${listing.property_id}`);
-                                                                toast({ title: "Deleted", description: "Property deleted successfully." });
+                                                                await api.patch(`/properties/${listing.property_id}/status`, { status: "active" });
+                                                                toast({ title: "Success", description: "Property is now live!" });
                                                                 fetchDashboardData();
-                                                            } catch (e: any) {
-                                                                toast({ title: "Error", description: e.response?.data?.message || "Failed to delete property", variant: "destructive" });
+                                                            } catch (e) {
+                                                                toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
                                                             }
-                                                        }
-                                                    }}>
-                                                        <span className="sr-only">Delete</span>
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </CardContent>
+                                                        }}>
+                                                            Make Live
+                                                        </Button>
+                                                    )}
+
+                                                    {(listing.listing_status === 'active' || listing.verification_status === 'rejected') && (
+                                                        <>
+                                                            <Link href={`/marketplace/${listing.property_id}`} className="flex-1">
+                                                                <Button variant="outline" size="sm" className="w-full">
+                                                                    {listing.listing_status === 'active' ? 'View Listing' : 'View Details'}
+                                                                </Button>
+                                                            </Link>
+                                                            {listing.listing_status === 'active' && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="flex-1 border-destructive text-destructive hover:bg-destructive/10"
+                                                                    onClick={async () => {
+                                                                        if (confirm("Are you sure you want to unlive this listing?")) {
+                                                                            try {
+                                                                                await api.patch(`/properties/${listing.property_id}/status`, { status: "hidden" });
+                                                                                toast({ title: "Success", description: "Listing is now hidden." });
+                                                                                fetchDashboardData();
+                                                                            } catch (e: any) {
+                                                                                toast({
+                                                                                    title: "Action Failed",
+                                                                                    description: e.response?.data?.message || "Failed to unlive listing",
+                                                                                    variant: "destructive"
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    Unlive
+                                                                </Button>
+                                                            )}
+                                                        </>
+                                                    )}
+
+                                                    {listing.verification_status === "rejected" && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="flex-1 border-destructive text-destructive hover:bg-destructive/10"
+                                                            onClick={() => {
+                                                                setSelectedRejection({
+                                                                    reason: listing.verification_logs?.[0]?.comments || "No reason provided",
+                                                                    proof: listing.documents?.find((d: any) => d.file_type === 'proof')
+                                                                });
+                                                                setRejectionModalOpen(true);
+                                                            }}
+                                                        >
+                                                            View Rejection Reason
+                                                        </Button>
+                                                    )}
+
+                                                    {listing.verification_status !== 'pending' && (
+                                                        <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8 ml-1" onClick={async () => {
+                                                            if (confirm("Are you sure you want to delete this property? This action cannot be undone.")) {
+                                                                try {
+                                                                    await api.delete(`/properties/${listing.property_id}`);
+                                                                    toast({ title: "Deleted", description: "Property deleted successfully." });
+                                                                    fetchDashboardData();
+                                                                } catch (e: any) {
+                                                                    toast({ title: "Error", description: e.response?.data?.message || "Failed to delete property", variant: "destructive" });
+                                                                }
+                                                            }
+                                                        }}>
+                                                            <span className="sr-only">Delete</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </div>
                                     </Card>
                                 ))}
                             </div>
@@ -717,8 +774,8 @@ export default function OwnerDashboard() {
                                 <Button variant="outline" onClick={() => setListingModalOpen(false)}>
                                     Cancel
                                 </Button>
-                                <Button variant="secondary" onClick={handleSaveDraft}>
-                                    Save as Draft
+                                <Button variant="secondary" onClick={handleSaveDraft} disabled={isSubmitting}>
+                                    {isSubmitting && currentStep > 1 ? "Saving..." : "Save as Draft"}
                                 </Button>
                                 {currentStep < 4 ? (
                                     <Button onClick={handleNextStep}>
@@ -726,8 +783,8 @@ export default function OwnerDashboard() {
                                         <ArrowRight className="ml-2 h-4 w-4" />
                                     </Button>
                                 ) : (
-                                    <Button onClick={() => handleSubmitListing(false)}>
-                                        Submit for Approval
+                                    <Button onClick={() => handleSubmitListing(false)} disabled={isSubmitting}>
+                                        {isSubmitting ? "Submitting..." : "Submit for Approval"}
                                     </Button>
                                 )}
                             </div>
@@ -741,6 +798,50 @@ export default function OwnerDashboard() {
                     onOpenChange={setKycModalOpen}
                     onSuccess={fetchDashboardData}
                 />
+
+                {/* Rejection Details Modal */}
+                <Dialog open={rejectionModalOpen} onOpenChange={setRejectionModalOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle className="text-destructive flex items-center gap-2">
+                                <AlertCircle className="h-5 w-5" />
+                                Listing Rejected
+                            </DialogTitle>
+                            <DialogDescription>
+                                This listing was rejected by the regulator. Please address the issues below and resubmit.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label className="text-muted-foreground">Regulator Comments</Label>
+                                <div className="p-3 bg-muted rounded-md text-sm border-l-4 border-destructive">
+                                    {selectedRejection?.reason}
+                                </div>
+                            </div>
+
+                            {selectedRejection?.proof && (
+                                <div className="space-y-2">
+                                    <Label className="text-muted-foreground">Proof of Rejection</Label>
+                                    <a
+                                        href={`${API_URL}${selectedRejection.proof.file_path}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 p-3 border rounded-md hover:bg-muted transition-colors text-primary"
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                        <span className="text-sm font-medium">{selectedRejection.proof.file_name}</span>
+                                        <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button onClick={() => setRejectionModalOpen(false)}>Close</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 <Chatbot />
             </div>
