@@ -20,8 +20,13 @@ export default function Marketplace() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [propertyType, setPropertyType] = useState("all");
+
+    // Dynamic Max Values
+    const [maxPrice, setMaxPrice] = useState(100000000);
+    const [maxTokens, setMaxTokens] = useState(10000);
+
     const [priceRange, setPriceRange] = useState([0, 100000000]);
-    const [tokenRange, setTokenRange] = useState([0, 2000]);
+    const [tokenRange, setTokenRange] = useState([0, 10000]);
     const [sortBy, setSortBy] = useState("newest");
 
     useEffect(() => {
@@ -31,7 +36,25 @@ export default function Marketplace() {
     const fetchListings = async () => {
         try {
             const res = await api.get("/marketplace");
-            setListings(res.data);
+            const data = res.data;
+            setListings(data);
+
+            // Calculate dynamic max values
+            if (data.length > 0) {
+                const highestPrice = Math.max(...data.map((l: any) => l.valuation));
+                const highestTokens = Math.max(...data.map((l: any) => l.total_tokens));
+
+                // Add a buffer (e.g. 10%) or round up to nearest significant number
+                const newMaxPrice = Math.ceil(highestPrice * 1.1);
+                const newMaxTokens = Math.ceil(highestTokens * 1.1);
+
+                setMaxPrice(newMaxPrice);
+                setMaxTokens(newMaxTokens);
+
+                // Reset ranges to full breadth of new data
+                setPriceRange([0, newMaxPrice]);
+                setTokenRange([0, newMaxTokens]);
+            }
         } catch (error) {
             console.error("Failed to fetch listings:", error);
         } finally {
@@ -120,14 +143,14 @@ export default function Marketplace() {
                                     <div className="pt-2">
                                         <Slider
                                             min={0}
-                                            max={100000000}
-                                            step={1000000}
+                                            max={maxPrice}
+                                            step={1000}
                                             value={priceRange}
                                             onValueChange={setPriceRange}
                                         />
                                         <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                                            <span>{(priceRange[0] / 1000000).toFixed(0)}M</span>
-                                            <span>{(priceRange[1] / 1000000).toFixed(0)}M</span>
+                                            <span>{(priceRange[0] / 1000000).toFixed(1)}M</span>
+                                            <span>{(priceRange[1] / 1000000).toFixed(1)}M</span>
                                         </div>
                                     </div>
                                 </div>
@@ -137,8 +160,8 @@ export default function Marketplace() {
                                     <div className="pt-2">
                                         <Slider
                                             min={0}
-                                            max={2000}
-                                            step={100}
+                                            max={maxTokens}
+                                            step={1}
                                             value={tokenRange}
                                             onValueChange={setTokenRange}
                                         />

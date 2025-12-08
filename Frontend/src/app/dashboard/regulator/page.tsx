@@ -54,7 +54,7 @@ export default function RegulatorDashboard() {
                     description: `${item.user?.name}'s KYC has been approved.`,
                 });
             } else {
-                await api.post(`/properties/${item.property_id}/verify`, { status: "approved" });
+                await api.patch(`/properties/${item.property_id}/verify`, { status: "approved" });
                 toast({
                     title: "Listing Approved",
                     description: `${item.title} has been approved for marketplace.`,
@@ -64,6 +64,7 @@ export default function RegulatorDashboard() {
             setReviewComments("");
             fetchDashboardData(); // Refresh data
         } catch (error: any) {
+            console.error("Handle Approve Error:", error);
             toast({
                 title: "Action Failed",
                 description: error.response?.data?.message || "Failed to approve",
@@ -91,7 +92,7 @@ export default function RegulatorDashboard() {
                     variant: "destructive",
                 });
             } else {
-                await api.post(`/properties/${item.property_id}/verify`, { status: "rejected", comments: reviewComments });
+                await api.patch(`/properties/${item.property_id}/verify`, { status: "rejected", comments: reviewComments });
                 toast({
                     title: "Listing Rejected",
                     description: `${item.title} has been rejected.`,

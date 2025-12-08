@@ -39,6 +39,8 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
+
+
         const {
             title,
             location,
@@ -51,16 +53,26 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             isDraft
         } = req.body;
 
+        // Helper to safely parse numbers, defaulting to 0 for drafts
+        const safeParseFloat = (val: any) => {
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? 0 : parsed;
+        };
+        const safeParseInt = (val: any) => {
+            const parsed = parseInt(val);
+            return isNaN(parsed) ? 0 : parsed;
+        };
+
         const property = await prisma.property.create({
             data: {
                 owner_id: userId,
-                title,
-                location,
-                description,
-                property_type: property_type as PropertyType,
-                valuation: parseFloat(valuation),
+                title: title || "Untitled Draft",
+                location: location || "",
+                description: description || "",
+                property_type: property_type as PropertyType || "commercial",
+                valuation: safeParseFloat(valuation),
                 verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
-                listing_status: ListingStatus.hidden, // Default to hidden until approved and made live
+                listing_status: ListingStatus.hidden,
             },
         });
 
@@ -68,9 +80,9 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
         await prisma.sukuk.create({
             data: {
                 property_id: property.property_id,
-                total_tokens: parseInt(total_tokens),
-                available_tokens: parseInt(tokens_for_sale),
-                token_price: parseFloat(price_per_token),
+                total_tokens: safeParseInt(total_tokens),
+                available_tokens: safeParseInt(tokens_for_sale),
+                token_price: safeParseFloat(price_per_token),
                 status: "active"
             }
         });
@@ -113,9 +125,9 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
         }
 
         res.status(201).json(property);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Create Property Error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Server error", error: error.message });
     }
 };
 
@@ -238,41 +250,54 @@ export const getMyProperties = async (req: AuthRequest, res: Response) => {
 
 // Regulator: Verify Property
 // Regulator: Verify Property
+// Regulator: Verify Property
 export const verifyProperty = async (req: AuthRequest, res: Response) => {
     try {
+
         const { status, remarks } = req.body; // approved, rejected
         const propertyId = parseInt(req.params.id);
         const regulatorId = req.user?.user_id;
 
         if (!regulatorId) {
+
             res.status(401).json({ message: "Unauthorized" });
             return;
         }
 
         if (!["approved", "rejected"].includes(status)) {
+
             res.status(400).json({ message: "Invalid status" });
             return;
         }
 
+        // Update Property Status
         const updated = await prisma.property.update({
             where: { property_id: propertyId },
             data: { verification_status: status as VerificationStatus },
         });
 
+
         // Create Verification Log
+        // Map string status to VerificationStatusLog enum
+        // Note: Enum values in Prisma are usually the same as the string, but let's be explicit if needed.
+        // If VerificationStatusLog is not imported, we can use the string if it matches.
+        // However, to be safe, let's ensure we are passing the correct string.
+        const logStatus = status === "approved" ? "approved" : "rejected";
+
         await prisma.verificationLog.create({
             data: {
                 property_id: propertyId,
                 regulator_id: regulatorId,
-                status: status === "approved" ? "approved" : "rejected",
+                status: logStatus as any, // Cast to any to avoid TS issues if enum not imported, or import it.
                 comments: remarks || null,
             }
         });
 
+
         res.json({ message: `Property ${status}`, property: updated });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Verify Property Error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Server error", error: error.message, stack: error.stack });
     }
 };
 
@@ -305,11 +330,12 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
         // If trying to unlive (hide/suspend), check if tokens are sold
         if (status !== "active") {
             const sukuk = await prisma.sukuk.findFirst({
-                where: { property_id: propertyId }
+                where: { property_id: propertyId },
+                include: { investments: true }
             });
 
-            if (sukuk && sukuk.total_tokens !== sukuk.available_tokens) {
-                res.status(400).json({ message: "Cannot unlive listing: Tokens have already been sold" });
+            if (sukuk && sukuk.investments.length > 0) {
+                res.status(400).json({ message: "Cannot unlive listing: Tokens have already been sold to investors" });
                 return;
             }
         }
@@ -347,11 +373,15 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        // Check if tokens have been sold
+        // Check if tokens have been sold (check for investments)
         if (property.sukuks && property.sukuks.length > 0) {
             const sukuk = property.sukuks[0];
-            if (sukuk.total_tokens !== sukuk.available_tokens) {
-                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold. Please unlive the listing instead." });
+            const investmentCount = await prisma.investment.count({
+                where: { sukuk_id: sukuk.sukuk_id }
+            });
+
+            if (investmentCount > 0) {
+                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold to investors. Please unlive the listing instead." });
                 return;
             }
         }

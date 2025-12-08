@@ -68,12 +68,89 @@ export default function CreateListing() {
         }
     };
 
+    const [isLoading, setIsLoading] = useState(false);
+    const [files, setFiles] = useState<{ [key: string]: File[] }>({
+        images: [],
+        documents: []
+    });
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'images' | 'documents') => {
+        if (e.target.files) {
+            setFiles(prev => ({
+                ...prev,
+                [type]: Array.from(e.target.files || [])
+            }));
+        }
+    };
+
+    const submitProperty = async (isDraft: boolean) => {
+        setIsLoading(true);
+        try {
+            const formDataObj = new FormData();
+            formDataObj.append('title', formData.title);
+            formDataObj.append('address', formData.address); // Backend expects location
+            formDataObj.append('location', formData.address);
+            formDataObj.append('valuation', formData.valuation);
+            formDataObj.append('description', formData.description);
+            formDataObj.append('property_type', 'commercial'); // Default or add field
+
+            // Token info (might be empty for draft)
+            formDataObj.append('total_tokens', formData.totalTokens || '0');
+            formDataObj.append('tokens_for_sale', formData.tokensForSale || '0');
+            formDataObj.append('price_per_token', formData.pricePerToken || '0');
+
+            formDataObj.append('isDraft', isDraft.toString());
+
+            // Append files
+            files.images.forEach(file => {
+                formDataObj.append('images', file);
+            });
+            files.documents.forEach(file => {
+                formDataObj.append('documents', file);
+            });
+
+            // We need to import api here or at top
+            const { default: api } = await import('@/lib/api');
+
+            await api.post('/properties', formDataObj, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            toast({
+                title: isDraft ? "Draft Saved" : "Listing Submitted",
+                description: isDraft
+                    ? "Your property draft has been saved."
+                    : "Your property has been submitted for regulator verification.",
+            });
+
+            setTimeout(() => router.push("/dashboard/owner"), 1500);
+        } catch (error: any) {
+            console.error("Submission error:", error);
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to save property",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSaveDraft = () => {
+        // Minimal validation for draft
+        if (!formData.title) {
+            toast({
+                title: "Title Required",
+                description: "Please enter a property title to save as draft.",
+                variant: "destructive",
+            });
+            return;
+        }
+        submitProperty(true);
+    };
+
     const handleSubmit = () => {
-        toast({
-            title: "Listing Submitted",
-            description: "Your property has been submitted for regulator verification. Expected review time: 48 hours.",
-        });
-        setTimeout(() => router.push("/dashboard/owner"), 1500);
+        submitProperty(false);
     };
 
     return (
@@ -103,13 +180,16 @@ export default function CreateListing() {
                     </div>
 
                     <Card className="animate-slide-up">
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>
                                 {step === 1 && "Basic Information"}
                                 {step === 2 && "Token Economics"}
                                 {step === 3 && "Documents & Images"}
                                 {step === 4 && "Review & Submit"}
                             </CardTitle>
+                            <Button variant="ghost" size="sm" onClick={handleSaveDraft} disabled={isLoading}>
+                                Save Draft
+                            </Button>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             {/* Step 1: Basic Info */}
@@ -264,20 +344,26 @@ export default function CreateListing() {
 
                             {/* Navigation Buttons */}
                             <div className="flex justify-between pt-6 border-t">
-                                {step > 1 && (
-                                    <Button variant="outline" onClick={() => setStep(step - 1)}>
-                                        <ArrowLeft className="mr-2 h-4 w-4" />
-                                        Previous
+                                <div className="flex gap-2">
+                                    {step > 1 && (
+                                        <Button variant="outline" onClick={() => setStep(step - 1)}>
+                                            <ArrowLeft className="mr-2 h-4 w-4" />
+                                            Previous
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" onClick={() => { console.log("Save Draft clicked"); handleSaveDraft(); }} disabled={isLoading}>
+                                        {isLoading ? "Saving..." : "Save Draft"}
                                     </Button>
-                                )}
+                                </div>
+
                                 {step < 4 ? (
-                                    <Button onClick={handleNext} className="ml-auto">
+                                    <Button onClick={handleNext}>
                                         Next
                                         <ArrowRight className="ml-2 h-4 w-4" />
                                     </Button>
                                 ) : (
-                                    <Button onClick={handleSubmit} className="ml-auto">
-                                        Submit for Approval
+                                    <Button onClick={handleSubmit} disabled={isLoading}>
+                                        {isLoading ? "Submitting..." : "Submit for Approval"}
                                     </Button>
                                 )}
                             </div>

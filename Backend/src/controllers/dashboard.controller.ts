@@ -143,6 +143,8 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             stats,
             alerts,
             listings: formattedProperties,
+            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
+            mfaEnabled: (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false,
         });
     } catch (error) {
         console.error("Owner Dashboard Error:", error);

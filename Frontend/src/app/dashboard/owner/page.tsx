@@ -10,11 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Building2, Shield, ArrowRight, ArrowLeft, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
+import { Plus, Building2, Shield, ArrowRight, ArrowLeft, SlidersHorizontal, Lock, CheckCircle, Clock } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
+import { KYCWizard } from "@/components/KYCWizard";
 
 export default function OwnerDashboard() {
     const [listingModalOpen, setListingModalOpen] = useState(false);
@@ -26,6 +28,10 @@ export default function OwnerDashboard() {
         tokensSold: 0,
         totalRevenue: 0
     });
+    const [kycStatus, setKycStatus] = useState("not_submitted");
+    const [mfaEnabled, setMfaEnabled] = useState(false);
+    const [kycModalOpen, setKycModalOpen] = useState(false);
+    const router = useRouter();
 
     const [listingData, setListingData] = useState({
         title: "",
@@ -52,6 +58,8 @@ export default function OwnerDashboard() {
             const res = await api.get("/dashboard/owner");
             setListings(res.data.listings);
             setStats(res.data.stats);
+            setKycStatus(res.data.kycStatus);
+            setMfaEnabled(res.data.mfaEnabled);
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast({
@@ -93,6 +101,18 @@ export default function OwnerDashboard() {
             }
         }
         setCurrentStep(currentStep + 1);
+    };
+
+    const handleSaveDraft = () => {
+        if (!listingData.title) {
+            toast({
+                title: "Title Required",
+                description: "Please enter a property title to save as draft.",
+                variant: "destructive",
+            });
+            return;
+        }
+        handleSubmitListing(true);
     };
 
     const handleSubmitListing = async (isDraft = false) => {
@@ -168,6 +188,8 @@ export default function OwnerDashboard() {
             toast({ title: "Error", description: e.response?.data?.message || "Failed to update supply", variant: "destructive" });
         }
     };
+
+
 
     return (
         <div className="min-h-screen bg-background">
@@ -405,42 +427,73 @@ export default function OwnerDashboard() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            <div className="flex items-start gap-4 p-4 border rounded-lg">
-                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                    <Shield className="h-5 w-5 text-accent" />
+                            {/* KYC Item */}
+                            {kycStatus !== 'approved' && (
+                                <div
+                                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${kycStatus === 'not_submitted' ? 'cursor-pointer hover:bg-accent/5' : ''}`}
+                                    onClick={() => kycStatus === 'not_submitted' && setKycModalOpen(true)}
+                                >
+                                    <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                        {kycStatus === 'pending' ? <Clock className="h-5 w-5 text-orange-500" /> : <Shield className="h-5 w-5 text-accent" />}
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <h3 className="font-semibold text-primary">Complete KYC Verification</h3>
+                                            {kycStatus === 'pending' && <Badge variant="secondary">Pending Approval</Badge>}
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mb-2">
+                                            {kycStatus === 'pending'
+                                                ? "Your documents are under review by the regulator."
+                                                : "Verify your identity and ownership documents to list properties."}
+                                        </p>
+                                        {kycStatus === 'not_submitted' && <Badge variant="outline" className="text-pending border-pending">Required</Badge>}
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-semibold text-primary mb-1">Complete KYC Verification</h3>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Verify your identity and ownership documents to list properties.
-                                    </p>
-                                    <Badge variant="outline" className="text-pending border-pending">Required</Badge>
-                                </div>
-                            </div>
+                            )}
 
-                            <div className="flex items-start gap-4 p-4 border rounded-lg">
-                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                    <Building2 className="h-5 w-5 text-accent" />
+                            {/* MFA Item */}
+                            {!mfaEnabled && (
+                                <div
+                                    className="flex items-start gap-4 p-4 border rounded-lg cursor-pointer hover:bg-accent/5 transition-colors"
+                                    onClick={() => router.push("/settings")}
+                                >
+                                    <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                        <Lock className="h-5 w-5 text-accent" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-primary mb-1">Enable MFA</h3>
+                                        <p className="text-sm text-muted-foreground">
+                                            Secure your account with Multi-Factor Authentication.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-semibold text-primary mb-1">Prepare Property Documents</h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        Gather ownership deeds, valuation reports, and legal documents.
-                                    </p>
-                                </div>
-                            </div>
+                            )}
 
-                            <div className="flex items-start gap-4 p-4 border rounded-lg">
-                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                    <Plus className="h-5 w-5 text-accent" />
+                            {/* Create Listing Item */}
+                            {listings.length === 0 && (
+                                <div
+                                    className="flex items-start gap-4 p-4 border rounded-lg cursor-pointer hover:bg-accent/5 transition-colors"
+                                    onClick={() => setListingModalOpen(true)}
+                                >
+                                    <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                        <Plus className="h-5 w-5 text-accent" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-primary mb-1">Create Your Listing</h3>
+                                        <p className="text-sm text-muted-foreground">
+                                            Define token economics and submit for regulator approval.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-semibold text-primary mb-1">Create Your Listing</h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        Define token economics and submit for regulator approval.
-                                    </p>
+                            )}
+
+                            {/* Empty State if all done */}
+                            {kycStatus === 'approved' && mfaEnabled && listings.length > 0 && (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
+                                    <p>All checklist items completed!</p>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -664,6 +717,9 @@ export default function OwnerDashboard() {
                                 <Button variant="outline" onClick={() => setListingModalOpen(false)}>
                                     Cancel
                                 </Button>
+                                <Button variant="secondary" onClick={handleSaveDraft}>
+                                    Save as Draft
+                                </Button>
                                 {currentStep < 4 ? (
                                     <Button onClick={handleNextStep}>
                                         Next
@@ -678,6 +734,13 @@ export default function OwnerDashboard() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                {/* KYC Modal */}
+                <KYCWizard
+                    open={kycModalOpen}
+                    onOpenChange={setKycModalOpen}
+                    onSuccess={fetchDashboardData}
+                />
 
                 <Chatbot />
             </div>

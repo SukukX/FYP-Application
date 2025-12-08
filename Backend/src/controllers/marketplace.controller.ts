@@ -100,14 +100,39 @@ export const getPropertyDetails = async (req: Request, res: Response) => {
             ? p.verification_logs[0].comments
             : "No comments available";
 
+        const investments = await prisma.investment.findMany({
+            where: { sukuk_id: p.sukuks[0]?.sukuk_id },
+            orderBy: { purchase_date: 'asc' },
+            select: {
+                purchase_date: true,
+                purchase_value: true,
+                tokens_owned: true
+            }
+        });
+
+        let priceHistory = investments.map(inv => ({
+            date: inv.purchase_date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            price: parseFloat(inv.purchase_value.toString()) / inv.tokens_owned
+        }));
+
+        // If no history, show current price as a straight line (today)
+        if (priceHistory.length === 0 && p.sukuks.length > 0) {
+            const currentPrice = parseFloat(p.sukuks[0].token_price.toString());
+            const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            priceHistory = [
+                { date: today, price: currentPrice },
+                { date: today, price: currentPrice } // Add second point to make a line
+            ];
+        }
+
         const formattedProperty = {
             ...property,
             images,
             documents,
-            regulatorComments
+            regulatorComments,
+            priceHistory
         };
 
-        console.log("Formatted Property Response:", JSON.stringify(formattedProperty, null, 2));
 
         res.json(formattedProperty);
     } catch (error) {

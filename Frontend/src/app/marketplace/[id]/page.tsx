@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Shield, MapPin, TrendingUp, TrendingDown, FileText, ExternalLink, Wallet } from "lucide-react";
+import { Shield, MapPin, TrendingUp, TrendingDown, FileText, ExternalLink, Wallet, Download, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
     XAxis,
@@ -23,6 +23,13 @@ import {
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+import {
+    Carousel,
+    CarouselContent,
+    CarouselItem,
+    CarouselNext,
+    CarouselPrevious,
+} from "@/components/ui/carousel";
 
 export default function PropertyDetail() {
     const { id } = useParams();
@@ -43,7 +50,11 @@ export default function PropertyDetail() {
     const fetchPropertyDetails = async () => {
         try {
             const res = await api.get(`/marketplace/${id}`);
-            setListing(res.data);
+            const data = res.data;
+
+
+
+            setListing(data);
         } catch (error) {
             console.error("Failed to fetch property details:", error);
             toast({
@@ -57,6 +68,13 @@ export default function PropertyDetail() {
     };
 
     const getImageUrl = (path: string) => {
+        if (!path) return "";
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+        const cleanPath = path.startsWith("/") ? path : `/${path}`;
+        return `${baseUrl}${cleanPath}`;
+    };
+
+    const getDocumentUrl = (path: string) => {
         if (!path) return "";
         const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
@@ -87,9 +105,9 @@ export default function PropertyDetail() {
 
     const sukuk = listing.sukuks && listing.sukuks.length > 0 ? listing.sukuks[0] : {};
     const pricePerToken = sukuk.token_price || 0;
-    const tokensAvailable = sukuk.available_tokens || 0;
+    const tokensAvailable = sukuk.available_tokens || 0; // Available for investors to buy
     const totalTokens = sukuk.total_tokens || 0;
-    const tokensForSale = totalTokens - tokensAvailable; // Assuming available means unsold
+    const tokensReserved = totalTokens - tokensAvailable; // Reserved by owner
 
     const totalPrice = numTokens * pricePerToken;
     const estimatedFees = totalPrice * 0.02;
@@ -181,14 +199,37 @@ export default function PropertyDetail() {
                 <div className="grid lg:grid-cols-3 gap-8">
                     {/* Left Column - Details */}
                     <div className="lg:col-span-2 space-y-6 animate-fade-in">
-                        {/* Image Gallery */}
-                        <div className="relative h-96 rounded-lg overflow-hidden">
-                            <img
-                                src={listing.images && listing.images.length > 0 ? getImageUrl(listing.images[0]) : "/placeholder-property.jpg"}
-                                alt={listing.title}
-                                className="w-full h-full object-cover"
-                            />
-                            <Badge className="absolute top-4 right-4 bg-verified text-verified-foreground">
+                        {/* Image Gallery Carousel */}
+                        <div className="relative rounded-lg overflow-hidden bg-muted">
+                            {listing.images && listing.images.length > 0 ? (
+                                <Carousel className="w-full">
+                                    <CarouselContent>
+                                        {listing.images.map((img: string, index: number) => (
+                                            <CarouselItem key={index}>
+                                                <div className="h-96 w-full relative">
+                                                    <img
+                                                        src={getImageUrl(img)}
+                                                        alt={`${listing.title} - Image ${index + 1}`}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                </div>
+                                            </CarouselItem>
+                                        ))}
+                                    </CarouselContent>
+                                    {listing.images.length > 1 && (
+                                        <>
+                                            <CarouselPrevious className="left-4" />
+                                            <CarouselNext className="right-4" />
+                                        </>
+                                    )}
+                                </Carousel>
+                            ) : (
+                                <div className="h-96 w-full flex items-center justify-center bg-muted">
+                                    <img src="/placeholder-property.jpg" alt="Placeholder" className="h-full w-full object-cover" />
+                                </div>
+                            )}
+
+                            <Badge className="absolute top-4 right-4 bg-verified text-verified-foreground z-10">
                                 <Shield className="h-3 w-3 mr-1" />
                                 Verified
                             </Badge>
@@ -197,9 +238,9 @@ export default function PropertyDetail() {
                         {/* Title & Address */}
                         <div>
                             <h1 className="text-3xl font-bold text-primary mb-2">{listing.title}</h1>
-                            <div className="flex items-center text-muted-foreground">
-                                <MapPin className="h-4 w-4 mr-2" />
-                                {listing.address}
+                            <div className="flex items-center text-muted-foreground text-lg">
+                                <MapPin className="h-5 w-5 mr-2 text-primary" />
+                                {listing.address || listing.location || "Address not available"}
                             </div>
                         </div>
 
@@ -210,7 +251,7 @@ export default function PropertyDetail() {
                             </CardHeader>
                             <CardContent>
                                 <ResponsiveContainer width="100%" height={300}>
-                                    <AreaChart data={listing.priceHistory}>
+                                    <AreaChart data={priceHistory}>
                                         <defs>
                                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -226,6 +267,7 @@ export default function PropertyDetail() {
                                         <YAxis
                                             tick={{ fill: 'hsl(var(--muted-foreground))' }}
                                             tickLine={{ stroke: 'hsl(var(--border))' }}
+                                            domain={['auto', 'auto']}
                                         />
                                         <Tooltip
                                             contentStyle={{
@@ -252,27 +294,45 @@ export default function PropertyDetail() {
                                 <CardTitle>Legal Documents</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-2">
-                                {listing.documents.map((doc: any, idx: number) => (
-                                    <div key={idx} className="flex items-center justify-between p-3 border rounded-lg">
-                                        <div className="flex items-center gap-2">
-                                            <FileText className="h-4 w-4 text-muted-foreground" />
-                                            <span>{doc.name}</span>
+                                {listing.documents && listing.documents.length > 0 ? (
+                                    listing.documents.map((doc: any, idx: number) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/5 transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <FileText className="h-5 w-5 text-primary" />
+                                                <span className="font-medium">{doc.name}</span>
+                                            </div>
+                                            <a
+                                                href={getDocumentUrl(doc.path)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                download
+                                            >
+                                                <Button variant="outline" size="sm" className="gap-2">
+                                                    <Download className="h-4 w-4" />
+                                                    Download
+                                                </Button>
+                                            </a>
                                         </div>
-                                        <Button variant="ghost" size="sm">
-                                            <ExternalLink className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                ))}
+                                    ))
+                                ) : (
+                                    <p className="text-muted-foreground text-sm">No documents available.</p>
+                                )}
                             </CardContent>
                         </Card>
 
                         {/* Regulator Comments */}
                         <Card>
-                            <CardHeader>
+                            <CardHeader className="flex flex-row items-center justify-between">
                                 <CardTitle>Regulator Status</CardTitle>
+                                <Badge className="bg-green-500 hover:bg-green-600">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Approved
+                                </Badge>
                             </CardHeader>
                             <CardContent>
-                                <p className="text-sm text-muted-foreground">{listing.regulatorComments}</p>
+                                <p className="text-sm text-muted-foreground">
+                                    {listing.regulatorComments || "This property has been fully verified and approved by the regulatory authority."}
+                                </p>
                             </CardContent>
                         </Card>
                     </div>
@@ -287,7 +347,7 @@ export default function PropertyDetail() {
                             <CardContent className="space-y-4">
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-4xl font-bold text-primary">
-                                        PKR {(currentPrice / 1000).toFixed(0)}K
+                                        PKR {Number(currentPrice).toLocaleString()}
                                     </span>
                                     <Badge variant={roi >= 0 ? "default" : "destructive"} className="ml-2">
                                         {roi >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
@@ -298,11 +358,11 @@ export default function PropertyDetail() {
                                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                                     <div>
                                         <p className="text-xs text-muted-foreground mb-1">Today's Low</p>
-                                        <p className="text-lg font-semibold text-destructive">PKR {(todayLow / 1000).toFixed(0)}K</p>
+                                        <p className="text-lg font-semibold text-destructive">PKR {Number(todayLow).toLocaleString()}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-muted-foreground mb-1">Today's High</p>
-                                        <p className="text-lg font-semibold text-verified">PKR {(todayHigh / 1000).toFixed(0)}K</p>
+                                        <p className="text-lg font-semibold text-verified">PKR {Number(todayHigh).toLocaleString()}</p>
                                     </div>
                                 </div>
                             </CardContent>
@@ -320,18 +380,20 @@ export default function PropertyDetail() {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Tokens</span>
-                                    <span className="font-semibold">{totalTokens}</span>
+                                    <span className="font-semibold">{totalTokens.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Available</span>
-                                    <span className="font-semibold flex items-center gap-1">
-                                        <TrendingUp className="h-3 w-3 text-verified" />
-                                        {tokensAvailable}
+                                    <span className="text-muted-foreground">Available for Investors</span>
+                                    <span className="font-semibold flex items-center gap-1 text-verified">
+                                        <TrendingUp className="h-3 w-3" />
+                                        {tokensAvailable.toLocaleString()}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">For Sale</span>
-                                    <span className="font-semibold">{tokensForSale} ({totalTokens > 0 ? ((tokensForSale / totalTokens) * 100).toFixed(0) : 0}%)</span>
+                                    <span className="text-muted-foreground">Owner Reserved</span>
+                                    <span className="font-semibold text-orange-500">
+                                        {tokensReserved.toLocaleString()} ({totalTokens > 0 ? ((tokensReserved / totalTokens) * 100).toFixed(0) : 0}%)
+                                    </span>
                                 </div>
 
                                 <div className="pt-4 border-t space-y-2">
