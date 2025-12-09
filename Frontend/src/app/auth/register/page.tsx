@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Navbar } from "@/components/Navbar";
+
 import { Building2, User, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
@@ -93,89 +93,86 @@ export default function Register() {
 
     if (!selectedRole) {
         return (
-            <div className="min-h-screen bg-background">
-                <Navbar />
-                <div className="container mx-auto px-4 py-16">
-                    <div className="max-w-4xl mx-auto">
-                        <div className="text-center mb-12 animate-fade-in">
-                            <h1 className="text-4xl font-bold text-primary mb-4">Create Your Account</h1>
-                            <p className="text-muted-foreground text-lg">Select your account type to get started</p>
+            <div className="min-h-screen grid lg:grid-cols-2">
+                {/* Left: Hero Section */}
+                <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1556761175-4b46a572b786?w=1600&h=900&fit=crop')] bg-cover bg-center opacity-20" />
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 text-2xl font-bold">
+                            <Link href="/">Smart Sukuk</Link>
+                        </div>
+                    </div>
+                    <div className="relative z-10 max-w-lg">
+                        <h1 className="text-4xl font-bold leading-tight mb-4">
+                            Start Your Investment Journey
+                        </h1>
+                        <p className="text-lg opacity-90">
+                            Create an account to access exclusive real estate opportunities or list your property for tokenization.
+                        </p>
+                    </div>
+                    <div className="relative z-10 text-sm opacity-70">
+                        &copy; 2025 Smart Sukuk. All rights reserved.
+                    </div>
+                </div>
+
+                {/* Right: Role Selection */}
+                <div className="flex items-center justify-center p-8 bg-background overflow-y-auto">
+                    <div className="w-full max-w-2xl space-y-8 animate-fade-in">
+                        <div className="text-center">
+                            <h2 className="text-3xl font-bold tracking-tight mb-2">Create an Account</h2>
+                            <p className="text-muted-foreground">Select how you want to use Smart Sukuk</p>
                         </div>
 
-                        <div className="grid md:grid-cols-3 gap-6">
+                        <div className="grid md:grid-cols-2 gap-4">
                             <Card
-                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
+                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up group"
                                 onClick={() => handleRoleSelect("investor")}
                             >
                                 <CardHeader className="text-center pb-4">
-                                    <div className="mx-auto h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                                        <User className="h-8 w-8 text-accent" />
+                                    <div className="mx-auto h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center mb-3 group-hover:bg-accent group-hover:text-white transition-colors">
+                                        <User className="h-6 w-6 text-accent group-hover:text-white" />
                                     </div>
-                                    <CardTitle className="text-xl">Investor</CardTitle>
-                                    <CardDescription>Buy and trade property tokens</CardDescription>
+                                    <CardTitle className="text-lg">Investor</CardTitle>
+                                    <CardDescription>Buy & trade tokens</CardDescription>
                                 </CardHeader>
-                                <CardContent>
-                                    <ul className="text-sm text-muted-foreground space-y-2">
-                                        <li>• Purchase security tokens</li>
-                                        <li>• Build your portfolio</li>
-                                        <li>• Trade on marketplace</li>
-                                        <li>• Track investments</li>
-                                    </ul>
-                                </CardContent>
                             </Card>
 
                             <Card
-                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
+                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up group"
                                 style={{ animationDelay: "100ms" }}
                                 onClick={() => handleRoleSelect("owner")}
                             >
                                 <CardHeader className="text-center pb-4">
-                                    <div className="mx-auto h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                                        <Building2 className="h-8 w-8 text-accent" />
+                                    <div className="mx-auto h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center mb-3 group-hover:bg-accent group-hover:text-white transition-colors">
+                                        <Building2 className="h-6 w-6 text-accent group-hover:text-white" />
                                     </div>
-                                    <CardTitle className="text-xl">Property Owner</CardTitle>
-                                    <CardDescription>Tokenize your real estate</CardDescription>
+                                    <CardTitle className="text-lg">Property Owner</CardTitle>
+                                    <CardDescription>Tokenize real estate</CardDescription>
                                 </CardHeader>
-                                <CardContent>
-                                    <ul className="text-sm text-muted-foreground space-y-2">
-                                        <li>• List properties</li>
-                                        <li>• Create token offerings</li>
-                                        <li>• Manage listings</li>
-                                        <li>• View sales analytics</li>
-                                    </ul>
-                                </CardContent>
                             </Card>
 
                             <Card
-                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
+                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up group md:col-span-2"
                                 style={{ animationDelay: "200ms" }}
                                 onClick={() => handleRoleSelect("regulator")}
                             >
-                                <CardHeader className="text-center pb-4">
-                                    <div className="mx-auto h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                                        <Shield className="h-8 w-8 text-accent" />
+                                <CardHeader className="text-center pb-4 flex flex-row items-center justify-center gap-4">
+                                    <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors">
+                                        <Shield className="h-5 w-5 text-accent group-hover:text-white" />
                                     </div>
-                                    <CardTitle className="text-xl">Regulator</CardTitle>
-                                    <CardDescription>Verify and approve listings</CardDescription>
+                                    <div className="text-left">
+                                        <CardTitle className="text-lg">Regulator</CardTitle>
+                                        <CardDescription>Compliance & Verification</CardDescription>
+                                    </div>
                                 </CardHeader>
-                                <CardContent>
-                                    <ul className="text-sm text-muted-foreground space-y-2">
-                                        <li>• Verify KYC documents</li>
-                                        <li>• Approve listings</li>
-                                        <li>• Manage compliance</li>
-                                        <li>• Audit trail access</li>
-                                    </ul>
-                                </CardContent>
                             </Card>
                         </div>
 
-                        <div className="text-center mt-8">
-                            <p className="text-muted-foreground">
-                                Already have an account?{" "}
-                                <Link href="/auth/login" className="text-accent hover:underline font-medium">
-                                    Login here
-                                </Link>
-                            </p>
+                        <div className="text-center text-sm">
+                            Already have an account?{" "}
+                            <Link href="/auth/login" className="text-accent hover:underline font-semibold">
+                                Sign in here
+                            </Link>
                         </div>
                     </div>
                 </div>
@@ -184,119 +181,136 @@ export default function Register() {
     }
 
     return (
-        <div className="min-h-screen bg-background">
-            <Navbar />
-            <div className="container mx-auto px-4 py-16">
-                <div className="max-w-md mx-auto">
-                    <Card className="animate-scale-in">
-                        <CardHeader>
-                            <CardTitle className="text-2xl">Register as {selectedRole === "investor" ? "Investor" : selectedRole === "owner" ? "Property Owner" : "Regulator"}</CardTitle>
-                            <CardDescription>Create your account to get started</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Full Name *</Label>
-                                    <Input
-                                        id="name"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        required
-                                    />
-                                </div>
+        <div className="min-h-screen grid lg:grid-cols-2">
+            {/* Left: Hero Section (Same as above to maintain consistency) */}
+            <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1556761175-4b46a572b786?w=1600&h=900&fit=crop')] bg-cover bg-center opacity-20" />
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 text-2xl font-bold">
+                        <Link href="/">Smart Sukuk</Link>
+                    </div>
+                </div>
+                <div className="relative z-10 max-w-lg">
+                    <h1 className="text-4xl font-bold leading-tight mb-4">
+                        Join as {selectedRole === "investor" ? "an Investor" : selectedRole === "owner" ? "a Property Owner" : "a Regulator"}
+                    </h1>
+                    <p className="text-lg opacity-90">
+                        {selectedRole === "investor" && "Start building your diversified real estate portfolio today."}
+                        {selectedRole === "owner" && "Unlock the value of your property through fractional ownership."}
+                        {selectedRole === "regulator" && "Ensure compliance and build trust in the digital asset ecosystem."}
+                    </p>
+                </div>
+                <div className="relative z-10 text-sm opacity-70">
+                    &copy; 2025 Smart Sukuk. All rights reserved.
+                </div>
+            </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="phone_number">Phone Number</Label>
-                                    <Input
-                                        id="phone_number"
-                                        value={formData.phone_number}
-                                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                                        placeholder="+92 300 1234567"
-                                    />
-                                </div>
+            {/* Right: Registration Form */}
+            <div className="flex items-center justify-center p-8 bg-background overflow-y-auto">
+                <div className="w-full max-w-lg space-y-6 animate-fade-in py-8">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-3xl font-bold tracking-tight">Sign Up</h2>
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedRole(null)} className="text-muted-foreground">
+                            Change Role
+                        </Button>
+                    </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">Email *</Label>
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="dob">Date of Birth *</Label>
-                                    <Input
-                                        id="dob"
-                                        type="date"
-                                        value={formData.dob}
-                                        onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="cnic">CNIC (42101-1234567-1) *</Label>
-                                    <Input
-                                        id="cnic"
-                                        placeholder="42101-1234567-1"
-                                        value={formData.cnic}
-                                        onChange={(e) => setFormData({ ...formData, cnic: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="password">Password *</Label>
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        required
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Min 12 characters, 1 uppercase, 1 lowercase, 1 number, 1 special character
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="confirmPassword">Confirm Password *</Label>
-                                    <Input
-                                        id="confirmPassword"
-                                        type="password"
-                                        value={formData.confirmPassword}
-                                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <Button type="submit" className="w-full" disabled={isLoading}>
-                                    {isLoading ? "Creating Account..." : "Create Account"}
-                                </Button>
-
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="w-full"
-                                    onClick={() => setSelectedRole(null)}
-                                >
-                                    Change Role
-                                </Button>
-                            </form>
-
-                            <div className="mt-6 text-center">
-                                <p className="text-sm text-muted-foreground">
-                                    Already have an account?{" "}
-                                    <Link href="/auth/login" className="text-accent hover:underline font-medium">
-                                        Login here
-                                    </Link>
-                                </p>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Full Name</Label>
+                                <Input
+                                    id="name"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    required
+                                    className="h-10"
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
+                            <div className="space-y-2">
+                                <Label htmlFor="phone_number">Phone</Label>
+                                <Input
+                                    id="phone_number"
+                                    value={formData.phone_number}
+                                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                                    placeholder="+92..."
+                                    className="h-10"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email Address</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                required
+                                className="h-10"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="dob">Date of Birth</Label>
+                                <Input
+                                    id="dob"
+                                    type="date"
+                                    value={formData.dob}
+                                    onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
+                                    required
+                                    className="h-10"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="cnic">CNIC</Label>
+                                <Input
+                                    id="cnic"
+                                    placeholder="42101-..."
+                                    value={formData.cnic}
+                                    onChange={(e) => setFormData({ ...formData, cnic: e.target.value })}
+                                    required
+                                    className="h-10"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="password">Password</Label>
+                            <Input
+                                id="password"
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                required
+                                className="h-10"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="confirmPassword">Confirm Password</Label>
+                            <Input
+                                id="confirmPassword"
+                                type="password"
+                                value={formData.confirmPassword}
+                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                required
+                                className="h-10"
+                            />
+                        </div>
+
+                        <Button type="submit" className="w-full h-11 text-base font-semibold mt-2" disabled={isLoading}>
+                            {isLoading ? "Creating Account..." : "Create Account"}
+                        </Button>
+                    </form>
+
+                    <div className="text-center text-sm pt-4">
+                        Already have an account?{" "}
+                        <Link href="/auth/login" className="text-accent hover:underline font-semibold">
+                            Sign in here
+                        </Link>
+                    </div>
                 </div>
             </div>
         </div>
