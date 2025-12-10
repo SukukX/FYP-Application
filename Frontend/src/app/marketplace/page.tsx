@@ -64,8 +64,8 @@ export default function Marketplace() {
 
     const getImageUrl = (path: string) => {
         if (!path) return "";
+        if (path.startsWith("http")) return path; // Return Cloudinary URL directly
         const baseUrl = process.env.NEXT_PUBLIC_API_URL;
-        // Ensure path starts with / and doesn't duplicate /uploads if already present
         const cleanPath = path.startsWith("/") ? path : `/${path}`;
         return `${baseUrl}${cleanPath}`;
     };

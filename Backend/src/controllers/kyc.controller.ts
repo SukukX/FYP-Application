@@ -4,24 +4,12 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { storage } from "../config/cloudinary";
 
 const prisma = new PrismaClient();
 
-// Configure Multer for local storage
-const storage = multer.diskStorage({
-    destination: (req: any, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-        const uploadPath = path.join(__dirname, "../../uploads/kyc");
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-    },
-    filename: (req: any, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-    },
-});
 
+// Configure Multer for Cloudinary storage
 export const upload = multer({ storage: storage });
 
 export const submitKYC = async (req: AuthRequest, res: Response) => {
@@ -55,9 +43,9 @@ export const submitKYC = async (req: AuthRequest, res: Response) => {
             user_id: userId,
             cnic_number,
             cnic_expiry: new Date(cnic_expiry),
-            cnic_front: files.cnic_front[0].path, // Storing local path for now
-            cnic_back: files.cnic_back[0].path,
-            face_scan: files.face_scan ? files.face_scan[0].path : null,
+            cnic_front: files.cnic_front[0].path, // Cloudinary URL
+            cnic_back: files.cnic_back[0].path, // Cloudinary URL
+            face_scan: files.face_scan ? files.face_scan[0].path : null, // Cloudinary URL
             status: KYCStatus.pending,
             submitted_at: new Date(),
         };

@@ -4,30 +4,12 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { storage } from "../config/cloudinary";
 
 const prisma = new PrismaClient();
 
-// Configure Multer for Property Documents
-const storage = multer.diskStorage({
-    destination: (req: any, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-        let uploadPath = path.join(__dirname, "../../uploads");
-        if (file.fieldname === "images") {
-            uploadPath = path.join(uploadPath, "properties/images");
-        } else {
-            uploadPath = path.join(uploadPath, "properties/documents");
-        }
 
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-    },
-    filename: (req: any, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-    },
-});
-
+// Configure Multer for Property Documents (Cloudinary)
 export const uploadPropertyDocs = multer({ storage: storage });
 
 // Create Property Draft
@@ -99,7 +81,7 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                             property_id: property.property_id,
                             file_name: file.originalname,
                             file_type: file.mimetype,
-                            file_path: `/uploads/properties/images/${file.filename}`,
+                            file_path: file.path, // Cloudinary URL
                             file_hash: "pending_hash",
                             verification_status: VerificationStatusDoc.pending,
                         },
@@ -115,7 +97,7 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                             property_id: property.property_id,
                             file_name: file.originalname,
                             file_type: file.mimetype,
-                            file_path: `/uploads/properties/documents/${file.filename}`,
+                            file_path: file.path, // Cloudinary URL
                             file_hash: "pending_hash",
                             verification_status: VerificationStatusDoc.pending,
                         },
@@ -167,7 +149,7 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
                         property_id: propertyId,
                         file_name: file.originalname,
                         file_type: file.mimetype, // or 'image'
-                        file_path: `/uploads/properties/images/${file.filename}`,
+                        file_path: file.path, // Cloudinary URL
                         file_hash: "pending_hash",
                         verification_status: VerificationStatusDoc.pending,
                     },
@@ -184,7 +166,7 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
                         property_id: propertyId,
                         file_name: file.originalname,
                         file_type: file.mimetype,
-                        file_path: `/uploads/properties/documents/${file.filename}`,
+                        file_path: file.path, // Cloudinary URL
                         file_hash: "pending_hash",
                         verification_status: VerificationStatusDoc.pending,
                     },
@@ -276,7 +258,7 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                     property_id: propertyId,
                     file_name: proofFile.originalname,
                     file_type: "proof", // Special type for proof docs
-                    file_path: `/uploads/properties/documents/${proofFile.filename}`,
+                    file_path: proofFile.path, // Cloudinary URL
                     file_hash: "proof_hash",
                     verification_status: VerificationStatusDoc.verified, // Auto-verified since uploaded by regulator
                     verified_by: regulatorId

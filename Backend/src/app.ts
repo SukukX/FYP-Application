@@ -1,5 +1,9 @@
 import express from "express";
 import dotenv from "dotenv";
+
+// Load env vars before other imports
+dotenv.config();
+
 import cors from "cors";
 import helmet from "helmet";
 import path from "path";
@@ -11,8 +15,6 @@ import marketplaceRoutes from "./routes/marketplace.routes";
 import propertyRoutes from "./routes/property.routes";
 import mfaRoutes from "./routes/mfa.routes";
 import settingsRoutes from "./routes/settings.routes";
-
-dotenv.config();
 const app = express();
 
 app.use(cors());

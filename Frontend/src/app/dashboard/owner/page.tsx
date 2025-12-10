@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
+import { getFileUrl } from "@/lib/utils";
 import { KYCWizard } from "@/components/KYCWizard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -281,7 +282,7 @@ export default function OwnerDashboard() {
                                             <div className="w-full md:w-48 h-48 md:h-auto relative bg-muted flex-shrink-0">
                                                 {listing.documents?.find((d: any) => d.file_type.startsWith('image/')) ? (
                                                     <img
-                                                        src={`${API_URL}${listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path}`}
+                                                        src={getFileUrl(listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path)}
                                                         alt={listing.title}
                                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                                     />

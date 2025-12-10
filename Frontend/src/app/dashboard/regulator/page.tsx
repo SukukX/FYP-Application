@@ -13,6 +13,7 @@ import { Shield, FileCheck, Users, AlertCircle, CheckCircle, XCircle } from "luc
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
+import { getFileUrl } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -386,7 +387,7 @@ export default function RegulatorDashboard() {
                                                 <div className="flex gap-2 overflow-x-auto pb-2">
                                                     {selectedItem.documents.filter((d: any) => d.file_type.startsWith("image/")).map((img: any, i: number) => (
                                                         <div key={i} className="h-24 w-32 flex-shrink-0 relative rounded-md overflow-hidden border">
-                                                            <img src={`${API_URL}${img.file_path}`} alt={`Property ${i}`} className="object-cover w-full h-full" />
+                                                            <img src={getFileUrl(img.file_path)} alt={`Property ${i}`} className="object-cover w-full h-full" />
                                                         </div>
                                                     ))}
                                                 </div>
@@ -426,7 +427,8 @@ export default function RegulatorDashboard() {
                                                     {selectedItem.documents.filter((d: any) => !d.file_type.startsWith("image/")).map((doc: any, i: number) => (
                                                         <a
                                                             key={i}
-                                                            href={`${API_URL}${doc.file_path}`}
+                                                            href={getFileUrl(doc.file_path, true)}
+                                                            download // Hint to browser
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="flex items-center p-2 border rounded hover:bg-muted text-sm text-primary transition-colors"
@@ -477,7 +479,7 @@ export default function RegulatorDashboard() {
                                         {selectedItem.cnic_front && (
                                             <div className="mt-2">
                                                 <span className="text-xs text-muted-foreground block mb-1">CNIC Front</span>
-                                                <img src={`${API_URL}${selectedItem.cnic_front}`} alt="CNIC Front" className="h-24 rounded border object-cover" />
+                                                <img src={getFileUrl(selectedItem.cnic_front)} alt="CNIC Front" className="h-24 rounded border object-cover" />
                                             </div>
                                         )}
                                     </div>

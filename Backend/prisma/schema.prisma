@@ -102,10 +102,10 @@ model KYCRequest {
   kyc_id         Int       @id @default(autoincrement())
   user_id        Int       @unique
   cnic_number    String    @unique @db.VarChar(15)
-  cnic_front     String    @db.VarChar(256) // IPFS/S3 URL
-  cnic_back      String    @db.VarChar(256) // IPFS/S3 URL
+  cnic_front     String    @db.Text // Changed to Text for Cloudinary URLs
+  cnic_back      String    @db.Text // Changed to Text for Cloudinary URLs
   cnic_expiry    DateTime  @db.Date
-  face_scan      String?   @db.VarChar(256)
+  face_scan      String?   @db.Text
   status         KYCStatus @default(pending)
   rejection_reason String? @db.Text
   reviewed_by    Int?      // Admin/Regulator ID
@@ -136,7 +136,7 @@ model Property {
   valuation         Decimal    @db.Decimal(15, 2)
   verification_status VerificationStatus @default(draft)
   listing_status    ListingStatus    @default(hidden)
-  image_folder_path String?    @db.VarChar(256)
+  image_folder_path String?    @db.Text
   created_at        DateTime   @default(now())
   updated_at        DateTime   @updatedAt
 
@@ -174,8 +174,8 @@ model Document {
   property_id        Int
   file_hash          String    @db.VarChar(256)
   file_name          String    @db.VarChar(256)
-  file_type          String    @db.VarChar(50)
-  file_path          String    @db.VarChar(256) // Actual path to file/folder
+  file_type          String    @db.VarChar(256) // Increased to 256 for long MIME types
+  file_path          String    @db.Text // Changed to Text for long Cloudinary URLs
   uploaded_at        DateTime  @default(now())
   verified_by        Int?      // Nullable regulator user ID
   verification_status VerificationStatusDoc @default(pending)
