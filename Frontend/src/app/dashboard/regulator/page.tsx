@@ -1,4 +1,13 @@
 "use client";
+/**
+ * [PAGE] Regulator Dashboard
+ * --------------------------
+ * Purpose: Administrative interface for verifying users and properties.
+ * Features:
+ * - KYC Review Queue: Approve/Reject user identities.
+ * - Listing Verification Queue: Check property documents before public listing.
+ * - Stats Overview: Platform-wide metrics.
+ */
 
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
@@ -57,6 +66,12 @@ export default function RegulatorDashboard() {
         }
     };
 
+    /**
+     * [ACTION] Approve Item
+     * Logic:
+     * - KYC: Updates User status to 'verified'.
+     * - Listing: Updates Property status to 'approved' + uploads optional Proof of Verification.
+     */
     const handleApprove = async (item: any, type: "kyc" | "listing") => {
         try {
             if (type === "kyc") {

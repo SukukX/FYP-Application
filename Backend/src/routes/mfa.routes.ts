@@ -1,4 +1,10 @@
 import { Router } from "express";
+/**
+ * [MODULE] MFA Routes
+ * -------------------
+ * Purpose: Multi-Factor Authentication management.
+ * Flow: Generate Secret (QR) -> Verify Token (Enable) -> Disable.
+ */
 import { generateMfaSecret, verifyMfa, disableMfa } from "../controllers/mfa.controller";
 import { authenticate } from "../middleware/auth.middleware";
 

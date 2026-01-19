@@ -1,10 +1,19 @@
 import { Response } from "express";
+/**
+ * [MODULE] Dashboard Controller
+ * ---------------------------
+ * Purpose: Centralized data fetcher for all user roles.
+ * Features:
+ * - Smart Alerts: Checks KYC/MFA status and pushes UI warnings.
+ * - Role Logic: Separate handlers for Investor, Owner, Regulator.
+ */
 import { PrismaClient, KYCStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
-// Helper to generate common alerts
+// [HELPER] Smart Alerts System
+// Logic: Checks DB state (KYC = pending/rejected, MFA = disabled) -> Returns Actionable UI Alerts.
 const getCommonAlerts = async (userId: number) => {
     const alerts = [];
 
@@ -79,6 +88,13 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
     }
 };
 
+/**
+ * [ROLE] Owner Dashboard
+ * Data:
+ * - Active Listings (Properties w/ 'active' status).
+ * - Sales Stats (Calculated from Sukuk Investments).
+ * - Action Items (KYC pending, etc.).
+ */
 export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;
@@ -157,6 +173,12 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
     }
 };
 
+/**
+ * [ROLE] Regulator Dashboard
+ * Data:
+ * - Queues: Pending KYC & Property Verification requests.
+ * - Platform Stats: Total Users, Active Sukuks.
+ */
 export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;

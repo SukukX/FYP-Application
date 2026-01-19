@@ -1,4 +1,12 @@
 "use client";
+/**
+ * [PAGE] Login
+ * ------------
+ * Purpose: Authenticates users and redirects them based on their role.
+ * Connections:
+ * - API: POST /api/auth/login
+ * - State: Updates global AuthContext (user + token).
+ */
 
 import { useState } from "react";
 import Link from "next/link";
@@ -24,6 +32,13 @@ export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
 
+    /**
+     * [ACTION] Handle Login
+     * Logic:
+     * 1. Call API.
+     * 2. On Success: Update Context -> Redirect (via Context).
+     * 3. On Failure: Show Toast.
+     */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);

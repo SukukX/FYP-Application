@@ -1,4 +1,12 @@
 "use client";
+/**
+ * [PAGE] Marketplace Feed
+ * -----------------------
+ * Purpose: Browsing and searching for tokenized properties.
+ * Features:
+ * - Dynamic Filtering: Client-side filtering by Price, Type, Tokens.
+ * - API Integration: Fetches all active listings via GET /marketplace.
+ */
 
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
@@ -70,6 +78,9 @@ export default function Marketplace() {
         return `${baseUrl}${cleanPath}`;
     };
 
+    // [LOGIC] Client-Side Filtering
+    // Filters listings based on search query, price range, and token availability.
+    // Note: Heavy filtering is done on frontend for responsiveness, but could be moved to backend for scale.
     const filteredListings = listings.filter((listing) => {
         const matchesSearch =
             listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

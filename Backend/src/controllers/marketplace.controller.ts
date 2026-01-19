@@ -1,4 +1,13 @@
 import { Request, Response } from "express";
+/**
+ * [MODULE] Marketplace Controller
+ * ------------------------------
+ * Purpose: Aggregates data for the investment marketplace.
+ * Features:
+ * - Filtering (Location, Price, Type).
+ * - Detailed Views (Documents, Price History).
+ * - Read-Only access (No state mutation here).
+ */
 import { PrismaClient, PropertyType } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -7,6 +16,9 @@ export const getListings = async (req: Request, res: Response) => {
     try {
         const { location, type, minPrice, maxPrice } = req.query;
 
+        // Filter Logic:
+        // - default: Approved & Active only.
+        // - optional: Location regex, Type match, Price range.
         const where: any = {
             verification_status: "approved",
             listing_status: "active",
@@ -60,6 +72,13 @@ export const getListings = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * [ACTION] Get Property Details
+ * Data Aggregation:
+ * - Fetches Property + Sukuk (Token Info) + Documents.
+ * - Filters Documents (separates Images from Legal Docs).
+ * - Calculates Price History based on past Investment records.
+ */
 export const getPropertyDetails = async (req: Request, res: Response) => {
     try {
         const propertyId = parseInt(req.params.id);

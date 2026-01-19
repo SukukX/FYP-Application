@@ -1,4 +1,9 @@
 import { Response } from "express";
+/**
+ * [MODULE] Settings Controller
+ * ----------------------------
+ * Purpose: Aggregates User Profile, Security (MFA), and Verification (KYC) status.
+ */
 import { PrismaClient } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 

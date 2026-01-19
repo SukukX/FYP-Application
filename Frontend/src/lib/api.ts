@@ -1,4 +1,13 @@
 import axios from "axios";
+/**
+ * [UTILITY] Axios API Client
+ * --------------------------
+ * Purpose: Centralized HTTP client for all Frontend API requests.
+ * Features:
+ * - Base URL configuration.
+ * - Automatic Authorization Header injection (Bearer Token).
+ * - Global Error Handling (Auto-logout on 401 Unauthorized).
+ */
 import Cookies from "js-cookie";
 
 const api = axios.create({
@@ -8,7 +17,11 @@ const api = axios.create({
     },
 });
 
-// Request Interceptor: Attach Token
+// ==========================================
+// Request Interceptor
+// Action: Injects 'Authorization: Bearer <token>' into every request.
+// Source: 'token' cookie (set by Login page)
+// ==========================================
 api.interceptors.request.use(
     (config) => {
         const token = Cookies.get("token");
@@ -20,7 +33,11 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle 401 (Logout)
+// ==========================================
+// Response Interceptor
+// Action: Global Error Handling
+// Logic: If Backend returns 401 (Unauthorized), user is logged out & redirected.
+// ==========================================
 api.interceptors.response.use(
     (response) => response,
     (error) => {

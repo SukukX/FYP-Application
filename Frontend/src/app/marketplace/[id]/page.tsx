@@ -1,4 +1,13 @@
 "use client";
+/**
+ * [PAGE] Property Details
+ * ----------------------
+ * Purpose: Detailed investment view and transaction execution.
+ * Features:
+ * - Price Charting: Historical price data visualization.
+ * - Due Diligence: Access to legal documents and regulator comments.
+ * - Transaction: Token purchase flow (KYC-gated).
+ */
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
@@ -127,6 +136,14 @@ export default function PropertyDetail() {
         ? ((currentPrice - priceHistory[0].price) / priceHistory[0].price) * 100
         : 0;
 
+    /**
+     * [ACTION] Buy Tokens
+     * Guard Rails:
+     * - Auth Check: User must be logged in.
+     * - Role Check: User must be an Investor.
+     * - KYC Check: User must be Verified.
+     * - Stock Check: Cannot buy more than available tokens.
+     */
     const handleBuyTokens = async () => {
         if (!currentUser) {
             toast({

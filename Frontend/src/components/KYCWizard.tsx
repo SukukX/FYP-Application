@@ -16,6 +16,15 @@ interface KYCWizardProps {
 }
 
 export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
+    /**
+     * [COMPONENT] KYC Wizard
+     * ----------------------
+     * Purpose: Smart identity verification modal.
+     * Features:
+     * - Live Webcam Capture: 'react-webcam' integration.
+     * - OCR Scanning: 'tesseract.js' to extract CNIC data from images.
+     * - State Management: Multi-step form data collection.
+     */
     const [kycData, setKycData] = useState({
         cnic: "",
         expiry: "",
@@ -30,6 +39,8 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
 
     const webcamRef = useRef<Webcam>(null);
 
+    // [LOGIC] Image Capture
+    // Captures screenshot from video feed, converts to File object.
     const capture = useCallback(async (mode: "front" | "back" | "face") => {
         const imageSrc = webcamRef.current?.getScreenshot();
         if (!imageSrc) return;
@@ -49,6 +60,8 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
         if (kycData.cnic) {
             setOcrStatus("Scanning text...");
             try {
+                // [FEATURE] Client-Side OCR
+                // Attempts to read text from the captured image to verify/autofill CNIC.
                 const { data: { text } } = await Tesseract.recognize(imageSrc, 'eng', {
                     logger: m => {
                         if (m.status === 'recognizing text') {

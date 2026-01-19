@@ -1,4 +1,10 @@
 import { Request, Response } from "express";
+/**
+ * [MODULE] MFA Controller
+ * -----------------------
+ * Purpose: Two-Factor Authentication logic.
+ * Tech: Uses 'Speakeasy' for TOTP generation/verification.
+ */
 import { PrismaClient } from "@prisma/client";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";

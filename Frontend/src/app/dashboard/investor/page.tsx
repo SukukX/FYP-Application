@@ -1,4 +1,13 @@
 "use client";
+/**
+ * [PAGE] Investor Dashboard
+ * -------------------------
+ * Purpose: Portfolio management for investors.
+ * Features:
+ * - Stats: Total investment value, token counts.
+ * - Visualizations: Portfolio distribution pie chart.
+ * - Quick Actions: KYC submission, Wallet connection.
+ */
 
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
@@ -47,12 +56,19 @@ export default function InvestorDashboard() {
         }
     };
 
+    // [VIZ] Portfolio Distribution
+    // Mocks data for the Pie Chart. In real app, derived from 'portfolio' state.
     const portfolioData = [
         { name: "Residential", value: 40, color: "hsl(var(--primary))" },
         { name: "Commercial", value: 35, color: "hsl(var(--accent))" },
         { name: "Industrial", value: 25, color: "hsl(var(--verified))" },
     ];
 
+    /**
+     * [ACTION] Submit KYC
+     * Purpose: Unlocks investment capabilities.
+     * Flow: Form Input -> API POST /kyc/submit -> Pending State.
+     */
     const handleKycSubmit = async () => {
         if (!kycData.fullName || !kycData.cnic || !kycData.cnicExpiry) {
             toast({

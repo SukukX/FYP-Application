@@ -1,4 +1,16 @@
 import { Request, Response } from "express";
+/**
+ * [MODULE] Property Controller
+ * ----------------------------
+ * Purpose: Handles business logic for Property management.
+ * Key Features:
+ * - Property Creation (Draft vs Pending Verification).
+ * - Document Uploads (Images/Legal Docs -> Cloudinary).
+ * - Verification Workflow (submit -> regulator approve/reject).
+ * - Lifecycle Management (Listing Status, Deletion Safety).
+ * 
+ * DB Interactions: Property, Sukuk, Document, VerificationLog tables.
+ */
 import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
@@ -12,7 +24,16 @@ const prisma = new PrismaClient();
 // Configure Multer for Property Documents (Cloudinary)
 export const uploadPropertyDocs = multer({ storage: storage });
 
-// Create Property Draft
+/**
+ * [ACTION] Create Property
+ * Flow:
+ * 1. Validates inputs & formats numbers (safely handles drafts with missing data).
+ * 2. Creates 'Property' record in DB.
+ * 3. Creates initial 'Sukuk' record (1-to-1 mapping with Property).
+ * 4. Iterates through uploaded files (Multer) & creates 'Document' records linked to Cloudinary paths.
+ * 
+ * Note: If 'isDraft' is true, status is set to DRAFT (bypassing strict validation).
+ */
 export const createProperty = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;
@@ -230,7 +251,14 @@ export const getMyProperties = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// Regulator: Verify Property
+/**
+ * [ACTION] Verify Property (Regulator Only)
+ * Purpose: Final step in the due diligence process.
+ * Logic:
+ * - Updates Property.verification_status (approved/rejected).
+ * - Uploads an optional 'Proof' document (Stamped config).
+ * - Logs the decision in 'VerificationLog' for audit trails.
+ */
 export const verifyProperty = async (req: AuthRequest, res: Response) => {
     try {
         const { status, remarks } = req.body; // approved, rejected
@@ -297,7 +325,13 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// Owner: Update Listing Status (e.g. Make Live)
+/**
+ * [ACTION] Update Listing Status
+ * Use Case: Owner wants to "Go Live" or "Hide" a property.
+ * Guard Rails:
+ * - Must be APPROVED by regulator to go live.
+ * - Cannot be hidden if tokens have already been sold (Investor Protection).
+ */
 export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     try {
         const { status } = req.body; // active, hidden, suspended
@@ -348,7 +382,13 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// Owner: Delete Property
+/**
+ * [ACTION] Delete Property
+ * Guard Rails: CRITICAL SAFETY CHECK
+ * - Checks if any investments exist (tokens sold).
+ * - If tokens sold -> REJECT deletion (Force 'unlive' instead).
+ * - If safe -> Cascading delete (Logs -> Sukuk -> Documents -> Property).
+ */
 export const deleteProperty = async (req: AuthRequest, res: Response) => {
     try {
         const propertyId = parseInt(req.params.id);

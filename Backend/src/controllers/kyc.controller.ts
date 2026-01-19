@@ -1,4 +1,12 @@
 import { Request, Response } from "express";
+/**
+ * [MODULE] KYC Controller
+ * -----------------------
+ * Purpose: Handles Identity Verification requests.
+ * Features:
+ * - Document Upload: Stores files in Cloudinary.
+ * - State Management: Tracks status (Pending/Approved/Rejected).
+ */
 import { PrismaClient, KYCStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
@@ -51,7 +59,8 @@ export const submitKYC = async (req: AuthRequest, res: Response) => {
         };
 
         if (existingKYC) {
-            // Update existing request (e.g., resubmission)
+            // [LOGIC] Resubmission
+            // If rejected previously, allow update. If approved, blocked by earlier check.
             const updatedKYC = await prisma.kYCRequest.update({
                 where: { user_id: userId },
                 data: kycData,

@@ -1,9 +1,22 @@
 import { Request, Response } from "express";
+/**
+ * [MODULE] User Controller
+ * ------------------------
+ * Purpose: Management of User Profile data.
+ * Features:
+ * - Fetch Profile (includes KYC status for UI logic).
+ * - Update Profile (Name, Address, etc.).
+ */
 import { PrismaClient } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
+/**
+ * [ACTION] Get Profile
+ * Purpose: Hydrates the frontend with user details.
+ * DB Query: Fetches User + Nested KYC Request Status (to show badges/warnings in UI).
+ */
 export const getProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;

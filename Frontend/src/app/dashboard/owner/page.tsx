@@ -1,4 +1,16 @@
 "use client";
+/**
+ * [PAGE] Owner Dashboard
+ * ----------------------
+ * Purpose: Main hub for Property Owners to manage their portfolio.
+ * Features:
+ * - View Stats (Active Listings, Tokens Sold, Revenue).
+ * - Create New Listings (Multi-step wizard).
+ * - Manage Token Supply (Minting/Burning simulation).
+ * - "Go Live" control (requires Regulator Approval).
+ * 
+ * Connection: Fetches data from GET /api/dashboard/owner
+ */
 
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
@@ -59,6 +71,12 @@ export default function OwnerDashboard() {
         fetchDashboardData();
     }, []);
 
+    /**
+     * [DATA FLOW] Fetch Dashboard Data
+     * Source: Backend API (GET /api/dashboard/owner)
+     * State Updates: Updates stats, listings list, KYC status, and MFA status.
+     * Trigger: Runs on component mount (useEffect).
+     */
     const fetchDashboardData = async () => {
         try {
             const res = await api.get("/dashboard/owner");
@@ -121,6 +139,14 @@ export default function OwnerDashboard() {
         handleSubmitListing(true);
     };
 
+    /**
+     * [ACTION] Submit Listing
+     * Logic:
+     * - Collects Multi-step form data.
+     * - Appends Files (Images/Docs) via FormData.
+     * - Handles both 'Draft' (save for later) and 'Submit' (send to regulator).
+     * Endpoint: POST /api/properties
+     */
     const handleSubmitListing = async (isDraft = false) => {
         if (isSubmitting) return;
         setIsSubmitting(true);

@@ -1,4 +1,15 @@
 import express from "express";
+/**
+ * [MODULE] Application Entry Point (App)
+ * --------------------------------------
+ * Purpose: Main Express application configuration.
+ * Functionality:
+ * - Aggregates all route modules (Auth, User, Property, etc.).
+ * - Sets up global middleware (CORS, Helmet, Body Parser).
+ * - Serves static uploads for local development.
+ * 
+ * Flow: Request -> Global Middleware -> Route Module -> Controller -> Response
+ */
 import dotenv from "dotenv";
 
 // Load env vars before other imports

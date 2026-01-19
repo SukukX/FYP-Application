@@ -1,4 +1,13 @@
 "use client";
+/**
+ * [PAGE] Register
+ * ---------------
+ * Purpose: New User Onboarding.
+ * Features:
+ * - Role Selection (Investor, Owner, Regulator).
+ * - Registration Form (Conditional on Role - currently shared).
+ * - API Integration (POST /api/auth/register).
+ */
 
 import { useState } from "react";
 import Link from "next/link";
@@ -36,6 +45,13 @@ export default function Register() {
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
 
+    /**
+     * [ACTION] Handle Registration
+     * Flow:
+     * 1. Validate Form (PW Match, Role Selected).
+     * 2. Call API.
+     * 3. On Success: Log in immediately -> Redirect.
+     */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
