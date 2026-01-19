@@ -102,3 +102,77 @@ export const getKYCStatus = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+
+/**
+ * [ACTION] Approve KYC
+ * Updates status to 'approved'.
+ */
+export const approveKYC = async (req: AuthRequest, res: Response) => {
+    try {
+        const { userId } = req.body;
+        const regulatorId = req.user?.user_id;
+
+        if (!userId) {
+            res.status(400).json({ message: "User ID is required" });
+            return;
+        }
+
+        const kyc = await prisma.kYCRequest.update({
+            where: { user_id: userId },
+            data: {
+                status: KYCStatus.approved,
+                reviewed_by: regulatorId,
+                reviewed_at: new Date(),
+                rejection_reason: null // Clear previous rejection reasons
+            },
+        });
+
+        // Also update the User table if needed, but currently relation-based
+        // Could trigger notifications here
+
+        res.json(kyc);
+    } catch (error) {
+        console.error("KYC Approve Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * [ACTION] Reject KYC
+ * Updates status to 'rejected' and logs reason.
+ */
+export const rejectKYC = async (req: AuthRequest, res: Response) => {
+    try {
+        const { userId, comments } = req.body;
+        const regulatorId = req.user?.user_id;
+
+        if (!userId || !comments) {
+            res.status(400).json({ message: "User ID and comments are required" });
+            return;
+        }
+
+        const kyc = await prisma.kYCRequest.update({
+            where: { user_id: userId },
+            data: {
+                status: KYCStatus.rejected,
+                rejection_reason: comments,
+                reviewed_by: regulatorId,
+                reviewed_at: new Date(),
+            },
+        });
+
+        // Notify user via notification system
+        await prisma.notification.create({
+            data: {
+                user_id: userId,
+                type: "verification",
+                message: `Your KYC verification was rejected. Reason: ${comments}`,
+            }
+        });
+
+        res.json(kyc);
+    } catch (error) {
+        console.error("KYC Reject Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};

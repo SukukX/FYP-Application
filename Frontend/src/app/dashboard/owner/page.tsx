@@ -45,6 +45,7 @@ export default function OwnerDashboard() {
     });
     const [kycStatus, setKycStatus] = useState("not_submitted");
     const [mfaEnabled, setMfaEnabled] = useState(false);
+    const [alerts, setAlerts] = useState<any[]>([]); // Added alerts state
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
@@ -84,6 +85,7 @@ export default function OwnerDashboard() {
             setStats(res.data.stats);
             setKycStatus(res.data.kycStatus);
             setMfaEnabled(res.data.mfaEnabled);
+            setAlerts(res.data.alerts || []); // Capture alerts
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast({
@@ -241,7 +243,21 @@ export default function OwnerDashboard() {
                         <Badge className="bg-pending text-primary">
                             <Shield className="h-3 w-3 mr-1" />
                             KYC Pending
+                            KYC Pending
                         </Badge>
+                    </div>
+                    {/* Render Smart Alerts */}
+                    <div className="mt-4 space-y-2">
+                        {alerts.map((alert, idx) => (
+                            <div key={idx} className={`p-4 rounded-md flex items-start gap-3 ${alert.type === 'error' ? 'bg-destructive/10 text-destructive' : alert.type === 'warning' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                    {alert.title && <h4 className="font-bold text-sm mb-1">{alert.title}</h4>}
+                                    <p className="text-sm font-medium">{alert.message}</p>
+                                    {alert.footer && <p className="text-xs mt-1 opacity-80 font-semibold">{alert.footer}</p>}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
@@ -514,23 +530,28 @@ export default function OwnerDashboard() {
                             {/* KYC Item */}
                             {kycStatus !== 'approved' && (
                                 <div
-                                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${kycStatus === 'not_submitted' ? 'cursor-pointer hover:bg-accent/5' : ''}`}
-                                    onClick={() => kycStatus === 'not_submitted' && setKycModalOpen(true)}
+                                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors cursor-pointer hover:bg-accent/5`}
+                                    onClick={() => (kycStatus === 'not_submitted' || kycStatus === 'rejected') && setKycModalOpen(true)}
                                 >
                                     <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                        {kycStatus === 'pending' ? <Clock className="h-5 w-5 text-orange-500" /> : <Shield className="h-5 w-5 text-accent" />}
+                                        {kycStatus === 'pending' ? <Clock className="h-5 w-5 text-orange-500" /> :
+                                            kycStatus === 'rejected' ? <AlertCircle className="h-5 w-5 text-destructive" /> :
+                                                <Shield className="h-5 w-5 text-accent" />}
                                     </div>
                                     <div className="flex-1">
                                         <div className="flex justify-between items-center mb-1">
                                             <h3 className="font-semibold text-primary">Complete KYC Verification</h3>
                                             {kycStatus === 'pending' && <Badge variant="secondary">Pending Approval</Badge>}
+                                            {kycStatus === 'rejected' && <Badge variant="destructive">Rejected</Badge>}
                                         </div>
                                         <p className="text-sm text-muted-foreground mb-2">
                                             {kycStatus === 'pending'
                                                 ? "Your documents are under review by the regulator."
-                                                : "Verify your identity and ownership documents to list properties."}
+                                                : kycStatus === 'rejected'
+                                                    ? "Your previous application was rejected. Click to resubmit."
+                                                    : "Verify your identity and ownership documents to list properties."}
                                         </p>
-                                        {kycStatus === 'not_submitted' && <Badge variant="outline" className="text-pending border-pending">Required</Badge>}
+                                        {(kycStatus === 'not_submitted' || kycStatus === 'rejected') && <Badge variant="outline" className="text-pending border-pending">Required</Badge>}
                                     </div>
                                 </div>
                             )}

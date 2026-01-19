@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+import { KYCWizard } from "@/components/KYCWizard";
 
 export default function InvestorDashboard() {
     const { user: currentUser } = useAuth();
@@ -36,7 +37,6 @@ export default function InvestorDashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
-    const [kycData, setKycData] = useState({ fullName: "", cnic: "", cnicExpiry: "" });
     const [walletAddress, setWalletAddress] = useState("");
     const { toast } = useToast();
 
@@ -64,35 +64,13 @@ export default function InvestorDashboard() {
         { name: "Industrial", value: 25, color: "hsl(var(--verified))" },
     ];
 
-    /**
-     * [ACTION] Submit KYC
-     * Purpose: Unlocks investment capabilities.
-     * Flow: Form Input -> API POST /kyc/submit -> Pending State.
-     */
-    const handleKycSubmit = async () => {
-        if (!kycData.fullName || !kycData.cnic || !kycData.cnicExpiry) {
-            toast({
-                title: "Incomplete Form",
-                description: "Please fill in all required fields.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        try {
-            await api.post("/kyc/submit", kycData);
-            toast({
-                title: "KYC Submitted",
-                description: "Your KYC application has been submitted for verification.",
-            });
-            setKycModalOpen(false);
-        } catch (error: any) {
-            toast({
-                title: "Submission Failed",
-                description: error.response?.data?.message || "Failed to submit KYC",
-                variant: "destructive",
-            });
-        }
+    // [ACTION] Submit KYC
+    // Purpose: Unlocks investment capabilities.
+    // Handled by KYCWizard now.
+    const handleKycSuccess = () => {
+        fetchDashboardData();
+        // Force reload user context if possible, or just let the badge update on next fetch
+        window.location.reload();
     };
 
     const handleWalletConnect = () => {
@@ -279,62 +257,12 @@ export default function InvestorDashboard() {
                 </Card>
             </div>
 
-            {/* KYC Modal */}
-            <Dialog open={kycModalOpen} onOpenChange={setKycModalOpen}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Complete KYC Verification</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="fullName">Full Name</Label>
-                            <Input
-                                id="fullName"
-                                value={kycData.fullName}
-                                onChange={(e) => setKycData({ ...kycData, fullName: e.target.value })}
-                                placeholder="Enter your legal full name"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="cnic">CNIC Number</Label>
-                            <Input
-                                id="cnic"
-                                value={kycData.cnic}
-                                onChange={(e) => setKycData({ ...kycData, cnic: e.target.value })}
-                                placeholder="42101-1234567-1"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="cnicExpiry">CNIC Expiry Date</Label>
-                            <Input
-                                id="cnicExpiry"
-                                type="date"
-                                value={kycData.cnicExpiry}
-                                onChange={(e) => setKycData({ ...kycData, cnicExpiry: e.target.value })}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Upload Documents</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button variant="outline" className="w-full">
-                                    CNIC Front
-                                </Button>
-                                <Button variant="outline" className="w-full">
-                                    CNIC Back
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setKycModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleKycSubmit}>
-                            Submit for Verification
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* KYC Wizard */}
+            <KYCWizard
+                open={kycModalOpen}
+                onOpenChange={setKycModalOpen}
+                onSuccess={handleKycSuccess}
+            />
 
             {/* Wallet Modal */}
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>

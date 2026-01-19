@@ -7,8 +7,8 @@ import { Router } from "express";
  * - Frontend: Investor Dashboard (Upload Modal).
  * - Middleware: Uses 'Multer' for file handling (CNIC, Face Scan).
  */
-import { submitKYC, getKYCStatus, upload } from "../controllers/kyc.controller";
-import { authenticate } from "../middleware/auth.middleware";
+import { submitKYC, getKYCStatus, approveKYC, rejectKYC, upload } from "../controllers/kyc.controller";
+import { authenticate, authorize } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -26,5 +26,9 @@ router.post(
 );
 
 router.get("/status", authenticate, getKYCStatus);
+
+// [RBAC] Regulator Only Routes
+router.post("/approve", authenticate, authorize(["regulator", "admin"]), approveKYC);
+router.post("/reject", authenticate, authorize(["regulator", "admin"]), rejectKYC);
 
 export default router;
