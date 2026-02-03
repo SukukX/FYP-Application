@@ -26,6 +26,8 @@ import marketplaceRoutes from "./routes/marketplace.routes";
 import propertyRoutes from "./routes/property.routes";
 import mfaRoutes from "./routes/mfa.routes";
 import settingsRoutes from "./routes/settings.routes";
+import blockchainRoutes from "./routes/blockchain.routes";
+
 const app = express();
 
 app.use(cors());
@@ -43,5 +45,6 @@ app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/properties", propertyRoutes);
 app.use("/api/mfa", mfaRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/blockchain", blockchainRoutes);
 
 export default app;
