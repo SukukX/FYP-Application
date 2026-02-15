@@ -40,7 +40,10 @@ export class AuthService {
     async login(data: any) {
         const { email, password } = data;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findUnique({
+            where: { email },
+            include: { kyc_request: true }
+        });
         if (!user) {
             throw new Error("Invalid credentials");
         }
@@ -53,7 +56,7 @@ export class AuthService {
         return this.generateToken(user);
     }
 
-    private generateToken(user: User) {
+    private generateToken(user: any) {
         if (!JWT_SECRET) {
             throw new Error("JWT_SECRET is not defined in environment variables");
         }
@@ -63,6 +66,14 @@ export class AuthService {
             JWT_SECRET,
             { expiresIn: "1d" }
         );
-        return { user, token };
+
+        // Return flat user object with kycStatus
+        const userResponse = {
+            ...user,
+            kycStatus: user.kyc_request?.status || "not_submitted"
+        };
+        delete userResponse.password; // Safety first
+
+        return { user: userResponse, token };
     }
 }

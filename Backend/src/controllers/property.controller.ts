@@ -259,6 +259,20 @@ export const getMyProperties = async (req: AuthRequest, res: Response) => {
  * - Uploads an optional 'Proof' document (Stamped config).
  * - Logs the decision in 'VerificationLog' for audit trails.
  */
+import * as blockchainService from "../services/blockchain.service";
+import { ethers } from "ethers";
+
+// ... [Keep existing imports]
+
+/**
+ * [ACTION] Verify Property (Regulator Only)
+ * Purpose: Final step in the due diligence process.
+ * Logic:
+ * - Updates Property.verification_status (approved/rejected).
+ * - [NEW] If Approved -> TRIGGERS BLOCKCHAIN TOKENIZATION automatically.
+ * - Uploads an optional 'Proof' document (Stamped config).
+ * - Logs the decision in 'VerificationLog' for audit trails.
+ */
 export const verifyProperty = async (req: AuthRequest, res: Response) => {
     try {
         const { status, remarks } = req.body; // approved, rejected
@@ -269,7 +283,6 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
         const proofFile = (req as any).file as Express.Multer.File; // Single file 'proof'
 
         if (!regulatorId) {
-
             res.status(401).json({ message: "Unauthorized" });
             return;
         }
@@ -279,49 +292,134 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        // Upload Proof Document if present
-        if (proofFile) {
-            await prisma.document.create({
-                data: {
-                    property_id: propertyId,
-                    file_name: proofFile.originalname,
-                    file_type: "proof", // Special type for proof docs
-                    file_path: proofFile.path, // Cloudinary URL
-                    file_hash: "proof_hash",
-                    verification_status: VerificationStatusDoc.verified, // Auto-verified since uploaded by regulator
-                    verified_by: regulatorId
-                }
-            });
-        }
-
-        // Update Property Status
-        const updated = await prisma.property.update({
+        // Fetch Property Full Details for Tokenization
+        const property = await prisma.property.findUnique({
             where: { property_id: propertyId },
-            data: { verification_status: status as VerificationStatus },
+            include: { sukuks: true, owner: true }
         });
 
+        if (!property) return res.status(404).json({ message: "Property not found" });
 
-        // Create Verification Log
-        // Map string status to VerificationStatusLog enum
-        // Note: Enum values in Prisma are usually the same as the string, but let's be explicit if needed.
-        // If VerificationStatusLog is not imported, we can use the string if it matches.
-        // However, to be safe, let's ensure we are passing the correct string.
-        const logStatus = status === "approved" ? "approved" : "rejected";
+        // ======================================================
+        // TOKENIZATION LOGIC (Only if Approving)
+        // ======================================================
+        let blockchainTxHash = null;
 
-        await prisma.verificationLog.create({
-            data: {
-                property_id: propertyId,
-                regulator_id: regulatorId,
-                status: logStatus as any, // Cast to any to avoid TS issues if enum not imported, or import it.
-                comments: remarks || null,
+        if (status === "approved") {
+            try {
+                const sukuk = property.sukuks[0];
+                if (!sukuk) throw new Error("No Sukuk structure found for this property.");
+
+                // 1. Check Owner Wallet
+                const ownerWallet = await prisma.wallet.findFirst({
+                    where: { user_id: property.owner_id, is_primary: true }
+                });
+
+                if (!ownerWallet) {
+                    return res.status(400).json({
+                        message: "Cannot approve: Owner does not have a connected wallet for tokenization."
+                    });
+                }
+
+                const partitionName = `Sukuk_Asset_${propertyId}`;
+                console.log(`[Verify] Approving & Tokenizing ${partitionName}...`);
+
+                // 2. Create Partition (Idempotent)
+                try {
+                    await blockchainService.createPartition(partitionName);
+                } catch (err: any) {
+                    const msg = err?.info?.error?.message || err.message || "";
+                    if (!msg.includes("Partition already exists") && !msg.includes("revert")) {
+                        throw err; // Real error
+                    }
+                    console.log("[Verify] Partition already exists, proceeding to mint.");
+                }
+
+                // 3. Issue Tokens (Mint to Owner)
+                blockchainTxHash = await blockchainService.issueTokens(
+                    partitionName,
+                    ownerWallet.wallet_address,
+                    sukuk.total_tokens.toString()
+                );
+
+                console.log(`[Verify] Minted ${sukuk.total_tokens} tokens. Hash: ${blockchainTxHash}`);
+
+            } catch (bcdError: any) {
+                console.error("Blockchain Tokenization Failed:", bcdError);
+                return res.status(500).json({
+                    message: "Approval Failed: Could not tokenize asset on blockchain.",
+                    details: bcdError.message
+                });
+            }
+        }
+
+        // ======================================================
+        // DB UPDATE (Transaction)
+        // ======================================================
+        await prisma.$transaction(async (tx) => {
+            // 1. Upload Proof Document if present
+            if (proofFile) {
+                await tx.document.create({
+                    data: {
+                        property_id: propertyId,
+                        file_name: proofFile.originalname,
+                        file_type: "proof",
+                        file_path: proofFile.path,
+                        file_hash: "proof_hash",
+                        verification_status: VerificationStatusDoc.verified,
+                        verified_by: regulatorId
+                    }
+                });
+            }
+
+            // 2. Update Property Status
+            await tx.property.update({
+                where: { property_id: propertyId },
+                data: { verification_status: status as VerificationStatus },
+            });
+
+            // 3. Log it
+            const logStatus = status === "approved" ? "approved" : "rejected";
+            await tx.verificationLog.create({
+                data: {
+                    property_id: propertyId,
+                    regulator_id: regulatorId,
+                    status: logStatus as any,
+                    comments: remarks || null,
+                }
+            });
+
+            // 4. If Approved, Active Sukuk & Create Investment
+            if (status === "approved" && blockchainTxHash) {
+                const sukuk = property.sukuks[0];
+
+                // Activate Sukuk
+                await tx.sukuk.update({
+                    where: { sukuk_id: sukuk.sukuk_id },
+                    data: {
+                        blockchain_hash: blockchainTxHash,
+                        status: 'active'
+                    }
+                });
+
+                // Grant Inventory to Owner
+                await tx.investment.create({
+                    data: {
+                        investor_id: property.owner_id,
+                        sukuk_id: sukuk.sukuk_id,
+                        tokens_owned: sukuk.total_tokens,
+                        purchase_value: 0,
+                        tx_hash: blockchainTxHash
+                    }
+                });
             }
         });
 
+        res.json({ message: `Property ${status} (Tokenization: ${!!blockchainTxHash})` });
 
-        res.json({ message: `Property ${status}`, property: updated });
     } catch (error: any) {
         console.error("Verify Property Error:", error);
-        res.status(500).json({ message: "Server error", error: error.message, stack: error.stack });
+        res.status(500).json({ message: "Server error", error: error.message });
     }
 };
 

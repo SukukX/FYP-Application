@@ -105,19 +105,19 @@ export const createPartition = async (req: Request, res: Response) => {
 
         // 1. Fetch Property & Draft Sukuk
         const property = await prisma.property.findUnique({
-             where: { property_id: Number(propertyId) },
-             include: { sukuks: true }
+            where: { property_id: Number(propertyId) },
+            include: { sukuks: true }
         });
-        
+
         if (!property) return res.status(404).json({ error: "Property not found" });
         if (property.owner_id !== userId) return res.status(403).json({ error: "Unauthorized" });
 
         const draftSukuk = property.sukuks[0];
         if (!draftSukuk) return res.status(404).json({ error: "Draft Sukuk not found" });
-        
+
         // NOTE: We allow the code to proceed even if hash is missing, 
         // to recover from the exact crash you are experiencing.
-        
+
         const ownerWalletRecord = await prisma.wallet.findFirst({
             where: { user_id: userId, is_primary: true }
         });
@@ -139,7 +139,7 @@ export const createPartition = async (req: Request, res: Response) => {
         } catch (error: any) {
             // Extract the error message safely
             const errorMessage = error?.info?.error?.message || error.message || JSON.stringify(error);
-            
+
             // Check for the specific "Already Exists" revert reason seen in your logs
             if (errorMessage.includes("Partition already exists") || errorMessage.includes("revert")) {
                 console.warn(`⚠️ Notice: Partition ${partitionName} already exists on-chain. Skipping creation and proceeding to mint.`);
@@ -152,17 +152,30 @@ export const createPartition = async (req: Request, res: Response) => {
         }
 
         // ======================================================
+        // STEP 1.5: WHITELIST OWNER (Required for Minting)
+        // ======================================================
+        // The smart contract requires even the Owner to be whitelisted to hold tokens.
+        try {
+            console.log(`[Tokenization] Whitelisting Owner ${ownerWalletRecord.wallet_address}...`);
+            await blockchainService.addToWhitelist(ownerWalletRecord.wallet_address);
+            console.log(`✅ Owner whitelisted.`);
+        } catch (error: any) {
+            // Ignore if already whitelisted (revert string parsing might be needed if strictly enforcing)
+            console.log(`[Tokenization] Whitelist Warning: ${error.message}`);
+        }
+
+        // ======================================================
         // STEP 2: PRE-MINTING (Inventory)
         // ======================================================
         // Now that we know the partition exists (either just created or existed before),
         // we proceed to mint the tokens.
-        
+
         console.log(`[Minting] Issuing ${draftSukuk.total_tokens} tokens to Owner...`);
-        
+
         // This call will use a FRESH nonce, solving your "Nonce too low" issue
         const txHash = await blockchainService.issueTokens(
-            partitionName, 
-            ownerWalletRecord.wallet_address, 
+            partitionName,
+            ownerWalletRecord.wallet_address,
             draftSukuk.total_tokens.toString()
         );
 
@@ -170,8 +183,8 @@ export const createPartition = async (req: Request, res: Response) => {
         // STEP 3: DATABASE SYNC
         // ======================================================
         await prisma.$transaction(async (tx) => {
-             // 1. Activate the Sukuk Record
-             await tx.sukuk.update({
+            // 1. Activate the Sukuk Record
+            await tx.sukuk.update({
                 where: { sukuk_id: draftSukuk.sukuk_id },
                 data: {
                     blockchain_hash: txHash,
@@ -182,7 +195,7 @@ export const createPartition = async (req: Request, res: Response) => {
             // 2. Create the Owner's Initial Inventory Record
             // We use 'upsert' here to handle the case where we crashed halfway through DB updates
             await tx.investment.upsert({
-                where: { 
+                where: {
                     // You need a unique constraint on [investor_id, sukuk_id] in your Schema for this to work perfectly.
                     // If you don't have one, findFirst + update/create is safer. 
                     // For now, assuming you handle duplicates or have a unique index:
@@ -196,21 +209,21 @@ export const createPartition = async (req: Request, res: Response) => {
                     investor_id: userId,
                     sukuk_id: draftSukuk.sukuk_id,
                     tokens_owned: draftSukuk.total_tokens,
-                    purchase_value: 0, 
+                    purchase_value: 0,
                     tx_hash: txHash
                 }
             });
-            
+
             // Note: If upsert gives you trouble due to schema, just use .create(). 
             // The transaction rollback protects us mostly, but since we are recovering from a crash,
             // the 'Active' status update is the most critical part.
         });
 
         // Success Response
-        res.json({ 
-            message: "Asset Tokenized Successfully (State Synced)", 
-            txHash, 
-            partitionName 
+        res.json({
+            message: "Asset Tokenized Successfully (State Synced)",
+            txHash,
+            partitionName
         });
 
     } catch (error: any) {
@@ -314,7 +327,7 @@ export const issueTokens = async (req: Request, res: Response) => {
             if (existingInv) {
                 await tx.investment.update({
                     where: { investment_id: existingInv.investment_id },
-                    data: { 
+                    data: {
                         tokens_owned: { increment: amountInt },
                         purchase_value: { increment: (amountInt * Number(sukuk.token_price)) }
                     }
@@ -408,13 +421,13 @@ export const transferTokens = async (req: Request, res: Response) => {
         // DB Sync
         await prisma.$transaction(async (tx) => {
             // Sender -
-            const senderInv = await tx.investment.findFirst({ where: { investor_id: senderUserId, sukuk_id: sukuk.sukuk_id }});
-            if (senderInv) await tx.investment.update({ where: { investment_id: senderInv.investment_id }, data: { tokens_owned: { decrement: amountToTransfer }}});
+            const senderInv = await tx.investment.findFirst({ where: { investor_id: senderUserId, sukuk_id: sukuk.sukuk_id } });
+            if (senderInv) await tx.investment.update({ where: { investment_id: senderInv.investment_id }, data: { tokens_owned: { decrement: amountToTransfer } } });
 
             // Receiver +
-            const receiverInv = await tx.investment.findFirst({ where: { investor_id: receiverWalletRecord.user_id, sukuk_id: sukuk.sukuk_id }});
+            const receiverInv = await tx.investment.findFirst({ where: { investor_id: receiverWalletRecord.user_id, sukuk_id: sukuk.sukuk_id } });
             if (receiverInv) {
-                await tx.investment.update({ where: { investment_id: receiverInv.investment_id }, data: { tokens_owned: { increment: amountToTransfer }}});
+                await tx.investment.update({ where: { investment_id: receiverInv.investment_id }, data: { tokens_owned: { increment: amountToTransfer } } });
             } else {
                 await tx.investment.create({
                     data: {
@@ -428,10 +441,10 @@ export const transferTokens = async (req: Request, res: Response) => {
             }
 
             // Logs
-            await tx.transactionLog.create({ data: { user_id: senderUserId, sukuk_id: sukuk.sukuk_id, type: 'sell', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' }});
-            await tx.transactionLog.create({ data: { user_id: receiverWalletRecord.user_id, sukuk_id: sukuk.sukuk_id, type: 'buy', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' }});
-            
-            await tx.auditLog.create({ data: { user_id: senderUserId, action: 'TRANSFER_ASSET', details: `Transfer ${amount} tokens to ${toWallet}`, ip_address: req.ip || "127.0.0.1" }});
+            await tx.transactionLog.create({ data: { user_id: senderUserId, sukuk_id: sukuk.sukuk_id, type: 'sell', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' } });
+            await tx.transactionLog.create({ data: { user_id: receiverWalletRecord.user_id, sukuk_id: sukuk.sukuk_id, type: 'buy', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' } });
+
+            await tx.auditLog.create({ data: { user_id: senderUserId, action: 'TRANSFER_ASSET', details: `Transfer ${amount} tokens to ${toWallet}`, ip_address: req.ip || "127.0.0.1" } });
         });
 
         res.json({ message: "Transfer successful", txHash });
@@ -452,8 +465,8 @@ export const distributeProfit = async (req: Request, res: Response) => {
         const ownerUserId = (req as any).user?.user_id;
 
         const property = await prisma.property.findUnique({
-             where: { property_id: Number(propertyId) },
-             include: { sukuks: true }
+            where: { property_id: Number(propertyId) },
+            include: { sukuks: true }
         });
 
         if (!property || property.owner_id !== ownerUserId) return res.status(403).json({ error: "Unauthorized" });
@@ -463,9 +476,9 @@ export const distributeProfit = async (req: Request, res: Response) => {
         // NOTE: This usually includes the Owner if they still hold inventory. 
         // If you want to EXCLUDE owner inventory, filter by NOT owner_id.
         const investments = await prisma.investment.findMany({
-            where: { 
-                sukuk_id: sukuk.sukuk_id, 
-                tokens_owned: { gt: 0 } 
+            where: {
+                sukuk_id: sukuk.sukuk_id,
+                tokens_owned: { gt: 0 }
             },
             include: { investor: true }
         });
@@ -478,7 +491,7 @@ export const distributeProfit = async (req: Request, res: Response) => {
         await prisma.$transaction(async (tx) => {
             for (const inv of investments) {
                 const payout = inv.tokens_owned * rate;
-                
+
                 await tx.profitDistribution.create({
                     data: {
                         sukuk_id: sukuk.sukuk_id,
@@ -539,12 +552,76 @@ export const addWallet = async (req: Request, res: Response) => {
     try {
         const { wallet } = req.body;
         const userId = (req as any).user?.user_id || (req as any).user?.id;
-        if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet" });
-        
-        const exists = await prisma.wallet.findUnique({ where: { wallet_address: wallet } });
-        if (exists) return res.status(409).json({ error: "Wallet linked" });
 
-        const newWallet = await prisma.wallet.create({ data: { user_id: userId, wallet_address: wallet, chain_id: 31337, is_primary: true }});
+        console.log(`[Wallet] Request to link ${wallet} to User ${userId}`);
+
+        if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet" });
+
+        const existingWallet = await prisma.wallet.findUnique({
+            where: { wallet_address: wallet },
+            include: { user: true }
+        });
+
+        if (existingWallet) {
+            if (existingWallet.user_id === userId) {
+                console.log(`[Wallet] Idempotent: Wallet already linked to this user.`);
+                return res.json({ message: "Wallet Connected", wallet: existingWallet });
+            } else {
+                console.log(`[Wallet] Conflict: Wallet linked to User ${existingWallet.user_id} (${existingWallet.user.email})`);
+                return res.status(409).json({ error: `Wallet already linked to another account (${existingWallet.user.email})` });
+            }
+        }
+
+        const newWallet = await prisma.wallet.create({
+            data: {
+                user_id: userId,
+                wallet_address: wallet,
+                chain_id: 31337,
+                is_primary: true
+            }
+        });
+
+        // [BLOCKCHAIN INTEGRATION] Auto-Whitelist if KYC is Approved
+        // ----------------------------------------------------------
+        const kyc = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
+        if (kyc && kyc.status === "approved") {
+            try {
+                console.log(`[Wallet] KYC is approved. Whitelisting ${wallet}...`);
+                await blockchainService.addToWhitelist(wallet);
+                console.log(`[Wallet] Whitelisted successfully.`);
+            } catch (err: any) {
+                console.error(`[Wallet] Whitelist Failed:`, err.message);
+            }
+        }
+
+        console.log(`[Wallet] Success: Linked ${wallet} to User ${userId}`);
         res.json({ message: "Wallet Connected", wallet: newWallet });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
+    } catch (error: any) {
+        console.error("Add Wallet Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const removeWallet = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user?.user_id || (req as any).user?.id;
+
+        console.log(`[Wallet] Request to remove wallet for User ${userId}`);
+
+        const wallet = await prisma.wallet.findFirst({
+            where: { user_id: userId, is_primary: true }
+        });
+
+        if (!wallet) return res.status(404).json({ error: "No wallet linked" });
+
+        await prisma.wallet.delete({
+            where: { wallet_id: wallet.wallet_id }
+        });
+
+        console.log(`[Wallet] Success: Removed wallet ${wallet.wallet_address} for User ${userId}`);
+        res.json({ message: "Wallet Disconnected" });
+    } catch (error: any) {
+        console.error("Remove Wallet Error:", error);
+        res.status(500).json({ error: error.message });
+    }
 };

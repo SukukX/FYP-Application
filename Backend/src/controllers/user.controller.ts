@@ -50,7 +50,15 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        res.json(user);
+        // [FIX] Flatten Structure for Frontend (AuthContext expects kycStatus at root)
+        const response = {
+            ...user,
+            kycStatus: user.kyc_request?.status || "not_submitted"
+        };
+        // Remove nested object if you want to keep it clean, or keep it. 
+        // We'll keep it for back-compat but ensure kycStatus is present.
+
+        res.json(response);
     } catch (error) {
         console.error("Get Profile Error:", error);
         res.status(500).json({ message: "Server error" });

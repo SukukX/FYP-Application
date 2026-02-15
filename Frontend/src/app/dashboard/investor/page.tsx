@@ -24,9 +24,20 @@ import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+import { KYCWizard } from "@/components/KYCWizard";
 
 export default function InvestorDashboard() {
     const { user: currentUser } = useAuth();
+    // Initialize with currentUser status, but allow local updates from dashboard fetch
+    const [kycStatus, setKycStatus] = useState<string>(currentUser?.kycStatus || 'not_submitted');
+
+    // Sync with currentUser if it updates (e.g. on page reload)
+    useEffect(() => {
+        if (currentUser?.kycStatus) {
+            setKycStatus(currentUser.kycStatus);
+        }
+    }, [currentUser]);
+
     const [stats, setStats] = useState({
         totalInvestment: 0,
         propertiesOwned: 0,
@@ -36,8 +47,8 @@ export default function InvestorDashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
-    const [kycData, setKycData] = useState({ fullName: "", cnic: "", cnicExpiry: "" });
     const [walletAddress, setWalletAddress] = useState("");
+    const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -49,6 +60,12 @@ export default function InvestorDashboard() {
             const res = await api.get("/dashboard/investor");
             setStats(res.data.stats);
             setPortfolio(res.data.portfolio);
+            if (res.data.kycStatus) {
+                setKycStatus(res.data.kycStatus);
+            }
+            if (res.data.walletAddress) {
+                setConnectedWallet(res.data.walletAddress);
+            }
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
         } finally {
@@ -64,38 +81,7 @@ export default function InvestorDashboard() {
         { name: "Industrial", value: 25, color: "hsl(var(--verified))" },
     ];
 
-    /**
-     * [ACTION] Submit KYC
-     * Purpose: Unlocks investment capabilities.
-     * Flow: Form Input -> API POST /kyc/submit -> Pending State.
-     */
-    const handleKycSubmit = async () => {
-        if (!kycData.fullName || !kycData.cnic || !kycData.cnicExpiry) {
-            toast({
-                title: "Incomplete Form",
-                description: "Please fill in all required fields.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        try {
-            await api.post("/kyc/submit", kycData);
-            toast({
-                title: "KYC Submitted",
-                description: "Your KYC application has been submitted for verification.",
-            });
-            setKycModalOpen(false);
-        } catch (error: any) {
-            toast({
-                title: "Submission Failed",
-                description: error.response?.data?.message || "Failed to submit KYC",
-                variant: "destructive",
-            });
-        }
-    };
-
-    const handleWalletConnect = () => {
+    const handleWalletConnect = async () => {
         if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
             toast({
                 title: "Invalid Address",
@@ -105,11 +91,40 @@ export default function InvestorDashboard() {
             return;
         }
 
-        toast({
-            title: "Wallet Connected",
-            description: "Your wallet has been successfully connected.",
-        });
-        setWalletModalOpen(false);
+        try {
+            await api.post("/blockchain/wallet", { wallet: walletAddress });
+            toast({
+                title: "Wallet Connected",
+                description: "Your wallet has been successfully connected.",
+            });
+            setWalletModalOpen(false);
+            fetchDashboardData(); // Refresh to see any updates if applicable
+        } catch (error: any) {
+            toast({
+                title: "Connection Failed",
+                description: error.response?.data?.error || "Failed to connect wallet.",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleDisconnectWallet = async () => {
+        if (!confirm("Are you sure you want to disconnect your wallet?")) return;
+        try {
+            await api.delete("/blockchain/wallet");
+            toast({
+                title: "Wallet Disconnected",
+                description: "Your wallet has been removed successfully.",
+            });
+            setConnectedWallet(null);
+            fetchDashboardData();
+        } catch (error: any) {
+            toast({
+                title: "Disconnect Failed",
+                description: error.response?.data?.error || "Failed to disconnect wallet.",
+                variant: "destructive",
+            });
+        }
     };
 
     return (
@@ -123,9 +138,9 @@ export default function InvestorDashboard() {
                             <h1 className="text-4xl font-bold text-primary mb-2">Investor Dashboard</h1>
                             <p className="text-muted-foreground">Manage your tokenized real estate portfolio</p>
                         </div>
-                        <Badge className={`${currentUser?.kycStatus === 'verified' ? 'bg-verified' : 'bg-pending'} text-primary-foreground`}>
+                        <Badge className={`${kycStatus === 'approved' ? 'bg-verified' : kycStatus === 'rejected' ? 'bg-destructive' : 'bg-pending'} text-primary-foreground`}>
                             <Shield className="h-3 w-3 mr-1" />
-                            {currentUser?.kycStatus === 'verified' ? 'KYC Verified' : 'KYC Pending'}
+                            {kycStatus === 'approved' ? 'KYC Verified' : kycStatus === 'rejected' ? 'KYC Rejected' : kycStatus === 'pending' ? 'KYC Pending' : 'KYC Not Submitted'}
                         </Badge>
                     </div>
                 </div>
@@ -178,18 +193,20 @@ export default function InvestorDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
                                         <Pie
-                                            data={portfolioData}
+                                            data={portfolio.length > 0 ? portfolio : [{ name: "No Data", value: 100, color: "#e5e7eb" }]}
                                             cx="50%"
                                             cy="50%"
                                             labelLine={false}
-                                            label={(entry: any) => `${entry.name} ${(entry.percent * 100).toFixed(0)}%`}
+                                            label={portfolio.length > 0 ? (entry: any) => `${entry.name} ${(entry.percent * 100).toFixed(0)}%` : undefined}
                                             outerRadius={100}
                                             fill="#8884d8"
                                             dataKey="value"
                                         >
-                                            {portfolioData.map((entry, index) => (
+                                            {portfolio.length > 0 ? portfolio.map((entry, index) => (
                                                 <Cell key={`cell-${index}`} fill={entry.color} />
-                                            ))}
+                                            )) : (
+                                                <Cell fill="#e5e7eb" />
+                                            )}
                                         </Pie>
                                         <Tooltip />
                                         <Legend />
@@ -220,41 +237,110 @@ export default function InvestorDashboard() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            <div className="flex items-start gap-4 p-4 border rounded-lg">
-                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                    <Shield className="h-5 w-5 text-accent" />
+                            {/* KYC Tile Logic */}
+                            {kycStatus === 'not_submitted' && (
+                                <div className="flex items-start gap-4 p-4 border rounded-lg">
+                                    <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                        <Shield className="h-5 w-5 text-accent" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-primary mb-1">Complete KYC Verification</h3>
+                                        <p className="text-sm text-muted-foreground mb-2">
+                                            Verify your identity to unlock buying and trading capabilities.
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setKycModalOpen(true)}
+                                        >
+                                            Start Verification
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-semibold text-primary mb-1">Complete KYC Verification</h3>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Verify your identity to unlock buying and trading capabilities.
-                                    </p>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setKycModalOpen(true)}
-                                    >
-                                        Start Verification
-                                    </Button>
-                                </div>
-                            </div>
+                            )}
 
+                            {kycStatus === 'pending' && (
+                                <div className="flex items-start gap-4 p-4 border rounded-lg bg-yellow-50/50 dark:bg-yellow-900/10">
+                                    <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center flex-shrink-0">
+                                        <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-semibold text-primary mb-1">Verification Pending</h3>
+                                            <Badge variant="outline" className="border-yellow-500 text-yellow-600">Under Review</Badge>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mb-2">
+                                            Your documents have been submitted and are currently being reviewed by our compliance team.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {kycStatus === 'rejected' && (
+                                <div className="flex items-start gap-4 p-4 border rounded-lg bg-destructive/5 border-destructive/20">
+                                    <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                                        <Shield className="h-5 w-5 text-destructive" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-destructive mb-1">Verification Rejected</h3>
+                                        <p className="text-sm text-muted-foreground mb-2">
+                                            There was an issue with your submission. Please prevent common errors like blurry images and try again.
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="border-destructive/50 hover:bg-destructive/10 text-destructive"
+                                            onClick={() => setKycModalOpen(true)}
+                                        >
+                                            Resubmit Documents
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Wallet Tile */}
                             <div className="flex items-start gap-4 p-4 border rounded-lg">
                                 <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
                                     <Wallet className="h-5 w-5 text-accent" />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="font-semibold text-primary mb-1">Connect Your Wallet</h3>
+                                    <h3 className="font-semibold text-primary mb-1">
+                                        {connectedWallet ? "Wallet Connected" : "Connect Your Wallet"}
+                                    </h3>
                                     <p className="text-sm text-muted-foreground mb-2">
-                                        Link your Ethereum wallet to receive and manage security tokens.
+                                        {connectedWallet
+                                            ? `Linked: ${connectedWallet.substring(0, 6)}...${connectedWallet.substring(connectedWallet.length - 4)}`
+                                            : "Link your Ethereum wallet to receive and manage security tokens."}
                                     </p>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setWalletModalOpen(true)}
-                                    >
-                                        Connect Wallet
-                                    </Button>
+
+                                    {connectedWallet ? (
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="border-green-500 text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/20"
+                                                disabled
+                                            >
+                                                Active
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-destructive hover:bg-destructive/10"
+                                                onClick={handleDisconnectWallet}
+                                            >
+                                                Disconnect
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setWalletModalOpen(true)}
+                                        >
+                                            Connect Wallet
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
 
@@ -279,62 +365,18 @@ export default function InvestorDashboard() {
                 </Card>
             </div>
 
-            {/* KYC Modal */}
-            <Dialog open={kycModalOpen} onOpenChange={setKycModalOpen}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Complete KYC Verification</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="fullName">Full Name</Label>
-                            <Input
-                                id="fullName"
-                                value={kycData.fullName}
-                                onChange={(e) => setKycData({ ...kycData, fullName: e.target.value })}
-                                placeholder="Enter your legal full name"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="cnic">CNIC Number</Label>
-                            <Input
-                                id="cnic"
-                                value={kycData.cnic}
-                                onChange={(e) => setKycData({ ...kycData, cnic: e.target.value })}
-                                placeholder="42101-1234567-1"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="cnicExpiry">CNIC Expiry Date</Label>
-                            <Input
-                                id="cnicExpiry"
-                                type="date"
-                                value={kycData.cnicExpiry}
-                                onChange={(e) => setKycData({ ...kycData, cnicExpiry: e.target.value })}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Upload Documents</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button variant="outline" className="w-full">
-                                    CNIC Front
-                                </Button>
-                                <Button variant="outline" className="w-full">
-                                    CNIC Back
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setKycModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleKycSubmit}>
-                            Submit for Verification
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* KYC Wizard */}
+            <KYCWizard
+                open={kycModalOpen}
+                onOpenChange={setKycModalOpen}
+                onSuccess={() => {
+                    fetchDashboardData();
+                    toast({
+                        title: "Verification Submitted",
+                        description: "Your KYC documents have been submitted successfully.",
+                    });
+                }}
+            />
 
             {/* Wallet Modal */}
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
