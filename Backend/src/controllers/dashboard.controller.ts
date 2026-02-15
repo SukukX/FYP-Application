@@ -31,7 +31,9 @@ const getCommonAlerts = async (userId: number) => {
     } else if (kyc.status === KYCStatus.rejected) {
         alerts.push({
             type: "error",
-            message: `KYC Rejected: ${kyc.rejection_reason}. Please resubmit.`,
+            title: "KYC Application Rejected",
+            message: kyc.rejection_reason,
+            footer: "Please resubmit your application.",
             action: "/kyc",
         });
     } else if (kyc.status === KYCStatus.pending) {
