@@ -26,6 +26,9 @@ import { useAuth } from "@/context/auth-context";
 export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [mfaCode, setMfaCode] = useState(""); // New State
+    const [showMfaInput, setShowMfaInput] = useState(false); // New State
+
     const router = useRouter();
     const { toast } = useToast();
 
@@ -34,17 +37,27 @@ export default function Login() {
 
     /**
      * [ACTION] Handle Login
-     * Logic:
-     * 1. Call API.
-     * 2. On Success: Update Context -> Redirect (via Context).
-     * 3. On Failure: Show Toast.
      */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
         try {
-            const res = await api.post("/auth/login", { email, password });
+            // Include mfaCode if we are in the second step
+            const payload = { email, password, mfaCode: showMfaInput ? mfaCode : undefined };
+
+            const res = await api.post("/auth/login", payload);
+
+            if (res.data.mfaRequired) {
+                setShowMfaInput(true);
+                toast({
+                    title: "MFA Required",
+                    description: "Please enter the code from your authenticator app.",
+                });
+                setIsLoading(false);
+                return;
+            }
+
             const { token, user } = res.data;
 
             login(token, user);
@@ -54,14 +67,14 @@ export default function Login() {
                 description: `Welcome back, ${user.name}!`,
             });
 
-            // Redirect is handled by AuthContext, but we can ensure it here
-            // router.push(`/dashboard/${user.role}`); 
         } catch (error: any) {
             toast({
                 title: "Login Failed",
                 description: error.response?.data?.message || "Invalid credentials",
                 variant: "destructive",
             });
+            // If failed during MFA, maybe clear the code
+            if (showMfaInput) setMfaCode("");
         } finally {
             setIsLoading(false);
         }
@@ -78,41 +91,69 @@ export default function Login() {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email or Username *</Label>
-                                <Input
-                                    id="email"
-                                    type="text"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    disabled={isLoading}
-                                    className="h-11"
-                                    placeholder="Enter your email"
-                                />
-                            </div>
+                            {!showMfaInput ? (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="email">Email or Username *</Label>
+                                        <Input
+                                            id="email"
+                                            type="text"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            required
+                                            disabled={isLoading}
+                                            className="h-11"
+                                            placeholder="Enter your email"
+                                        />
+                                    </div>
 
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <Label htmlFor="password">Password *</Label>
-                                    <Link href="/auth/forgot" className="text-xs text-accent hover:underline">
-                                        Forgot password?
-                                    </Link>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <Label htmlFor="password">Password *</Label>
+                                            <Link href="/auth/forgot" className="text-xs text-accent hover:underline">
+                                                Forgot password?
+                                            </Link>
+                                        </div>
+                                        <Input
+                                            id="password"
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            required
+                                            disabled={isLoading}
+                                            className="h-11"
+                                            placeholder="Enter your password"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="space-y-2 animate-fade-in">
+                                    <Label htmlFor="mfaCode">Authenticator Code</Label>
+                                    <Input
+                                        id="mfaCode"
+                                        type="text"
+                                        value={mfaCode}
+                                        onChange={(e) => setMfaCode(e.target.value)}
+                                        required
+                                        disabled={isLoading}
+                                        className="h-11 text-center text-lg tracking-widest font-mono"
+                                        placeholder="000000"
+                                        maxLength={6}
+                                        autoFocus
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="w-full text-xs text-muted-foreground"
+                                        onClick={() => { setShowMfaInput(false); setMfaCode(""); }}
+                                    >
+                                        Back to Login
+                                    </Button>
                                 </div>
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    disabled={isLoading}
-                                    className="h-11"
-                                    placeholder="Enter your password"
-                                />
-                            </div>
+                            )}
 
                             <Button type="submit" className="w-full h-11 text-base" disabled={isLoading}>
-                                {isLoading ? "Logging in..." : "Login"}
+                                {isLoading ? "Verifying..." : (showMfaInput ? "Verify Code" : "Login")}
                             </Button>
                         </form>
 

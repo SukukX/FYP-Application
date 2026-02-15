@@ -10,7 +10,16 @@ interface User {
     name: string;
     email: string;
     role: string;
-    kycStatus?: string;
+    phone_number?: string;
+    country?: string;
+    address?: string;
+    dob?: string | Date; // API might return string or Date object
+    profile_pic?: string;
+    kyc_request?: {
+        status: string;
+    };
+    created_at?: string | Date;
+    kycStatus?: string; // Legacy or alternative
     walletAddress?: string;
 }
 
@@ -19,6 +28,7 @@ interface AuthContextType {
     loading: boolean;
     login: (token: string, user: User) => void;
     logout: () => void;
+    setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>
             {children}
         </AuthContext.Provider>
     );
