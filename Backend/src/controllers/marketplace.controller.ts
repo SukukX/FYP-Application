@@ -44,12 +44,23 @@ export const getListings = async (req: Request, res: Response) => {
                 documents: {
                     select: { file_path: true, file_type: true }
                 },
-                sukuks: true
+                sukuks: {
+                    include: {
+                        investments: true
+                    }
+                }
             }
         });
 
         const formattedProperties = properties.map(p => {
             const sukuk = p.sukuks[0];
+
+            // Calculate sold tokens (Exclude Owner's initial inventory)
+            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => {
+                if (inv.investor_id === p.owner_id) return sum;
+                return sum + inv.tokens_owned;
+            }, 0) : 0;
+
             return {
                 id: p.property_id,
                 title: p.title,
@@ -60,6 +71,7 @@ export const getListings = async (req: Request, res: Response) => {
                 images: p.documents.filter(d => d.file_type.startsWith("image")).map(d => d.file_path),
                 total_tokens: sukuk ? sukuk.total_tokens : 0,
                 tokens_available: sukuk ? sukuk.available_tokens : 0,
+                tokens_sold: soldForSukuk,
                 price_per_token: sukuk ? parseFloat(sukuk.token_price.toString()) : 0,
                 created_at: p.created_at
             };
@@ -125,7 +137,8 @@ export const getPropertyDetails = async (req: Request, res: Response) => {
             select: {
                 purchase_date: true,
                 purchase_value: true,
-                tokens_owned: true
+                tokens_owned: true,
+                investor_id: true
             }
         });
 
@@ -144,8 +157,15 @@ export const getPropertyDetails = async (req: Request, res: Response) => {
             ];
         }
 
+        // Calculate sold tokens (Exclude Owner's "Inventory" holding)
+        const tokensSold = investments.reduce((sum, inv) => {
+            if (inv.investor_id === property.owner_id) return sum;
+            return sum + inv.tokens_owned;
+        }, 0);
+
         const formattedProperty = {
             ...property,
+            tokens_sold: tokensSold,
             images,
             documents,
             regulatorComments,

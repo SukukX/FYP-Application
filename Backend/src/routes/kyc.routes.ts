@@ -27,8 +27,19 @@ router.post(
 
 router.get("/status", authenticate, getKYCStatus);
 
-// [RBAC] Regulator Only Routes
-router.post("/approve", authenticate, authorize(["regulator", "admin"]), approveKYC);
-router.post("/reject", authenticate, authorize(["regulator", "admin"]), rejectKYC);
+// Regulator Actions
+router.post(
+    "/approve",
+    authenticate,
+    authorize(["regulator", "admin"]),
+    approveKYC
+);
+
+router.post(
+    "/reject",
+    authenticate,
+    authorize(["regulator", "admin"]),
+    rejectKYC
+);
 
 export default router;

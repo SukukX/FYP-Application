@@ -22,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Building2, SlidersHorizontal, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink } from "lucide-react";
+import { Plus, Building2, SlidersHorizontal, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +50,9 @@ export default function OwnerDashboard() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
     const [selectedRejection, setSelectedRejection] = useState<any>(null);
+    const [walletModalOpen, setWalletModalOpen] = useState(false);
+    const [walletAddress, setWalletAddress] = useState("");
+    const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
     const router = useRouter();
 
     const [listingData, setListingData] = useState({
@@ -85,7 +88,9 @@ export default function OwnerDashboard() {
             setStats(res.data.stats);
             setKycStatus(res.data.kycStatus);
             setMfaEnabled(res.data.mfaEnabled);
-            setAlerts(res.data.alerts || []); // Capture alerts
+            if (res.data.walletAddress) {
+                setConnectedWallet(res.data.walletAddress);
+            }
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast({
@@ -228,6 +233,53 @@ export default function OwnerDashboard() {
     };
 
 
+
+
+    const handleWalletConnect = async () => {
+        if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+            toast({
+                title: "Invalid Address",
+                description: "Please enter a valid Ethereum wallet address.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        try {
+            await api.post("/blockchain/wallet", { wallet: walletAddress });
+            toast({
+                title: "Wallet Connected",
+                description: "Your wallet has been successfully connected.",
+            });
+            setWalletModalOpen(false);
+            fetchDashboardData(); // Refresh to see any updates if applicable
+        } catch (error: any) {
+            toast({
+                title: "Connection Failed",
+                description: error.response?.data?.error || "Failed to connect wallet.",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleDisconnectWallet = async () => {
+        if (!confirm("Are you sure you want to disconnect your wallet?")) return;
+        try {
+            await api.delete("/blockchain/wallet");
+            toast({
+                title: "Wallet Disconnected",
+                description: "Your wallet has been removed successfully.",
+            });
+            setConnectedWallet(null);
+            fetchDashboardData();
+        } catch (error: any) {
+            toast({
+                title: "Disconnect Failed",
+                description: error.response?.data?.error || "Failed to disconnect wallet.",
+                variant: "destructive",
+            });
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background">
@@ -574,7 +626,54 @@ export default function OwnerDashboard() {
                                 </div>
                             )}
 
+                            {/* Wallet Tile */}
+                            <div className="flex items-start gap-4 p-4 border rounded-lg">
+                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                    <Wallet className="h-5 w-5 text-accent" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-semibold text-primary mb-1">
+                                        {connectedWallet ? "Wallet Connected" : "Connect Your Wallet"}
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                        {connectedWallet
+                                            ? `Linked: ${connectedWallet.substring(0, 6)}...${connectedWallet.substring(connectedWallet.length - 4)}`
+                                            : "Link your Ethereum wallet to receive proceeds from token sales."}
+                                    </p>
+
+                                    {connectedWallet ? (
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="border-green-500 text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/20"
+                                                disabled
+                                            >
+                                                Active
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-destructive hover:bg-destructive/10"
+                                                onClick={handleDisconnectWallet}
+                                            >
+                                                Disconnect
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setWalletModalOpen(true)}
+                                        >
+                                            Connect Wallet
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Create Listing Item */}
+
                             {listings.length === 0 && (
                                 <div
                                     className="flex items-start gap-4 p-4 border rounded-lg cursor-pointer hover:bg-accent/5 transition-colors"
@@ -887,6 +986,37 @@ export default function OwnerDashboard() {
 
                         <DialogFooter>
                             <Button onClick={() => setRejectionModalOpen(false)}>Close</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Wallet Modal */}
+                <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Connect Your Wallet</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="walletAddress">Ethereum Wallet Address</Label>
+                                <Input
+                                    id="walletAddress"
+                                    value={walletAddress}
+                                    onChange={(e) => setWalletAddress(e.target.value)}
+                                    placeholder="0x..."
+                                />
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Enter your Ethereum wallet address to receive proceeds from token sales.
+                            </p>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setWalletModalOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleWalletConnect}>
+                                Connect Wallet
+                            </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
