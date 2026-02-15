@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 
@@ -30,6 +30,7 @@ export const UserAvatar = () => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Avatar className="h-9 w-9 cursor-pointer border-2 border-accent/20 hover:border-accent transition-colors">
+          <AvatarImage src={user.profile_pic} />
           <AvatarFallback className="bg-accent/10 text-accent font-semibold">
             {getInitials()}
           </AvatarFallback>

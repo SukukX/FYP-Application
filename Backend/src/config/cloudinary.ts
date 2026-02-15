@@ -19,6 +19,8 @@ export const storage = new CloudinaryStorage({
             folderName = 'smart-sukuk/properties/documents';
         } else if (file.fieldname === 'cnic_front' || file.fieldname === 'cnic_back' || file.fieldname === 'face_scan') {
             folderName = 'smart-sukuk/kyc';
+        } else if (file.fieldname === 'profile_pic') {
+            folderName = 'smart-sukuk/profiles';
         }
 
         // Sanitize public ID (remove special characters)

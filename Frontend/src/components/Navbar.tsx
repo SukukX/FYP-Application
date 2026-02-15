@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Shield } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useAuth } from "@/context/auth-context";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export const Navbar = () => {
   const { user, loading } = useAuth();
@@ -33,6 +34,7 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <ModeToggle />
           {loading ? (
             <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
           ) : user ? (

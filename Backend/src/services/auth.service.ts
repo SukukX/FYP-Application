@@ -1,6 +1,7 @@
 import { PrismaClient, User, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import * as speakeasy from "speakeasy";
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -38,9 +39,14 @@ export class AuthService {
     }
 
     async login(data: any) {
-        const { email, password } = data;
+        const { email, password, mfaCode } = data;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        // Include mfa_setting in query to check status
+        const user = await prisma.user.findUnique({
+            where: { email },
+            include: { mfa_setting: true }
+        });
+
         if (!user) {
             throw new Error("Invalid credentials");
         }
@@ -48,6 +54,26 @@ export class AuthService {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             throw new Error("Invalid credentials");
+        }
+
+        // Check MFA
+        if (user.mfa_setting?.is_enabled) {
+            if (!mfaCode) {
+                // Signal controller that MFA is required
+                return { mfaRequired: true };
+            }
+
+            // Verify Code
+            const verified = speakeasy.totp.verify({
+                secret: user.mfa_setting.secret!,
+                encoding: "base32",
+                token: mfaCode,
+                window: 1 // Allow 30s slack
+            });
+
+            if (!verified) {
+                throw new Error("Invalid MFA Code");
+            }
         }
 
         return this.generateToken(user);
