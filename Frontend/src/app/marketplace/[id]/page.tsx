@@ -117,8 +117,9 @@ export default function PropertyDetail() {
     const sukuk = listing.sukuks && listing.sukuks.length > 0 ? listing.sukuks[0] : {};
     const pricePerToken = sukuk.token_price || 0;
     const tokensAvailable = sukuk.available_tokens || 0; // Available for investors to buy
+    const tokensSold = listing.tokens_sold || 0;
     const totalTokens = sukuk.total_tokens || 0;
-    const tokensReserved = totalTokens - tokensAvailable; // Reserved by owner
+    const tokensReserved = Math.max(0, totalTokens - tokensAvailable - tokensSold); // Reserved by owner
 
     const totalPrice = numTokens * pricePerToken;
     const estimatedFees = totalPrice * 0.02;
@@ -165,7 +166,7 @@ export default function PropertyDetail() {
             return;
         }
 
-        if (currentUser.kycStatus !== "verified") {
+        if (currentUser.kycStatus !== "approved") {
             toast({
                 title: "KYC Verification Required",
                 description: "Please complete KYC verification to purchase tokens.",
@@ -188,7 +189,7 @@ export default function PropertyDetail() {
 
         try {
             await api.post("/transactions/buy", {
-                propertyId: listing.id,
+                propertyId: listing.property_id,
                 amount: numTokens
             });
 
@@ -400,6 +401,10 @@ export default function PropertyDetail() {
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Total Tokens</span>
                                     <span className="font-semibold">{totalTokens.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Tokens Sold</span>
+                                    <span className="font-semibold">{tokensSold.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Available for Investors</span>

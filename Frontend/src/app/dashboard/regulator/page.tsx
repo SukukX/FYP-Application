@@ -491,12 +491,20 @@ export default function RegulatorDashboard() {
                                             <span className="font-semibold capitalize">{selectedItem.user?.role}</span>
                                         </div>
                                         {/* Add Image Links for KYC too if possible */}
-                                        {selectedItem.cnic_front && (
-                                            <div className="mt-2">
-                                                <span className="text-xs text-muted-foreground block mb-1">CNIC Front</span>
-                                                <img src={getFileUrl(selectedItem.cnic_front)} alt="CNIC Front" className="h-24 rounded border object-cover" />
-                                            </div>
-                                        )}
+                                        <div className="flex gap-4 mt-2">
+                                            {selectedItem.cnic_front && (
+                                                <div className="mt-2">
+                                                    <span className="text-xs text-muted-foreground block mb-1">CNIC Front</span>
+                                                    <img src={getFileUrl(selectedItem.cnic_front)} alt="CNIC Front" className="h-24 rounded border object-cover" />
+                                                </div>
+                                            )}
+                                            {selectedItem.cnic_back && (
+                                                <div className="mt-2">
+                                                    <span className="text-xs text-muted-foreground block mb-1">CNIC Back</span>
+                                                    <img src={getFileUrl(selectedItem.cnic_back)} alt="CNIC Back" className="h-24 rounded border object-cover" />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

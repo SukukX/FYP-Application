@@ -263,6 +263,12 @@ export default function Marketplace() {
                                             </div>
 
                                             <div className="flex justify-between text-sm">
+                                                <span className="text-muted-foreground">Tokens Sold</span>
+                                                <span className="font-semibold text-muted-foreground">
+                                                    {listing.tokens_sold || 0}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
                                                 <span className="text-muted-foreground">Available</span>
                                                 <span className="font-semibold flex items-center gap-1">
                                                     <TrendingUp className="h-3 w-3 text-verified" />
@@ -272,7 +278,7 @@ export default function Marketplace() {
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-muted-foreground">Reserved</span>
                                                 <span className="font-semibold text-muted-foreground">
-                                                    {listing.total_tokens - (listing.tokens_available || 0)}
+                                                    {Math.max(0, listing.total_tokens - (listing.tokens_available || 0) - (listing.tokens_sold || 0))}
                                                 </span>
                                             </div>
                                         </div>

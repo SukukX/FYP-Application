@@ -27,6 +27,9 @@ import propertyRoutes from "./routes/property.routes";
 import mfaRoutes from "./routes/mfa.routes";
 import settingsRoutes from "./routes/settings.routes";
 import blockchainRoutes from "./routes/blockchain.routes";
+import rentRoutes from "./routes/rent.routes";
+import priceRoutes from "./routes/price.routes";
+import transactionRoutes from "./routes/transaction.routes";
 
 const app = express();
 
@@ -46,5 +49,8 @@ app.use("/api/properties", propertyRoutes);
 app.use("/api/mfa", mfaRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/blockchain", blockchainRoutes);
+app.use("/api/rent", rentRoutes);
+app.use("/api/prices", priceRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 export default app;

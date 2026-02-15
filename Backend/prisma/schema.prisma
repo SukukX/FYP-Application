@@ -39,11 +39,16 @@ model User {
 
   // Owner relations
   properties          Property[]
+  price_updates_requested ListingUpdateRequest[] @relation("OwnerRequests")
 
   // Regulator relations
   documents_verified  Document[]
   verification_logs   VerificationLog[]
   compliance_verified ComplianceRecord[]
+  price_updates_reviewed ListingUpdateRequest[] @relation("RegulatorReviews")
+  
+  // Track who changed prices
+  price_history_changes TokenPriceHistory[]
 
   @@map("users")
 }
@@ -137,6 +142,9 @@ model Property {
   verification_status VerificationStatus @default(draft)
   listing_status    ListingStatus    @default(hidden)
   image_folder_path String?    @db.Text
+  occupancy_status  OccupancyStatus  @default(vacant)
+  
+  // Removed image_folder_path as it was redundant
   created_at        DateTime   @default(now())
   updated_at        DateTime   @updatedAt
 
@@ -145,6 +153,8 @@ model Property {
   documents         Document[]
   sukuks            Sukuk[]
   verification_logs VerificationLog[]
+  rent_payments     RentPayment[]
+  listing_updates   ListingUpdateRequest[]
 
   @@map("properties")
 }
@@ -153,6 +163,12 @@ enum PropertyType {
   residential
   commercial
   industrial
+}
+
+enum OccupancyStatus {
+  vacant
+  rented
+  owner_occupied
 }
 
 enum VerificationStatus {
@@ -212,6 +228,7 @@ model Sukuk {
   profit_distributions ProfitDistribution[]
   transaction_logs     TransactionLog[]
   compliance_records   ComplianceRecord[]
+  price_history        TokenPriceHistory[]
 
   @@map("sukuks")
 }
@@ -251,6 +268,60 @@ model ProfitDistribution {
   investor       User      @relation(fields: [investor_id], references: [user_id])
 
   @@map("profit_distributions")
+}
+
+// New Models for Rent/Price Logic
+
+model RentPayment {
+  rent_id         Int       @id @default(autoincrement())
+  property_id     Int
+  amount          Decimal   @db.Decimal(15, 2)
+  payment_date    DateTime
+  period_start    DateTime
+  period_end      DateTime
+  is_owner_occupied Boolean @default(false)
+  distributed_at  DateTime? // Null if not yet distributed
+  created_at      DateTime  @default(now())
+
+  property        Property  @relation(fields: [property_id], references: [property_id])
+
+  @@map("rent_payments")
+}
+
+model TokenPriceHistory {
+  history_id      Int       @id @default(autoincrement())
+  sukuk_id        Int
+  old_price       Decimal   @db.Decimal(15, 4)
+  new_price       Decimal   @db.Decimal(15, 4)
+  changed_by      Int
+  change_reason   String?
+  effective_date  DateTime  @default(now())
+
+  sukuk           Sukuk     @relation(fields: [sukuk_id], references: [sukuk_id])
+  user            User      @relation(fields: [changed_by], references: [user_id])
+
+  @@map("token_price_history")
+}
+
+model ListingUpdateRequest {
+  request_id      Int       @id @default(autoincrement())
+  property_id     Int
+  owner_id        Int
+  field_changed   String    @db.VarChar(50) // e.g., 'valuation', 'token_price'
+  old_value       String    @db.Text
+  new_value       String    @db.Text
+  justification   String?   @db.Text
+  status          VerificationStatus @default(pending)
+  reviewed_by     Int?
+  reviewed_at     DateTime?
+  rejection_reason String?  @db.Text
+  created_at      DateTime  @default(now())
+
+  property        Property  @relation(fields: [property_id], references: [property_id])
+  owner           User      @relation("OwnerRequests", fields: [owner_id], references: [user_id])
+  regulator       User?     @relation("RegulatorReviews", fields: [reviewed_by], references: [user_id])
+
+  @@map("listing_update_requests")
 }
 
 // Logs & Compliance

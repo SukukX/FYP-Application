@@ -1,12 +1,19 @@
 import { sukukContract, wallet } from "../config/blockchain";
 import { ethers } from "ethers";
-
-
+import { blockchainLogger } from "../utils/logger";
 
 export const createPartition = async (partitionName: string) => {
-    const tx = await sukukContract.createPartition(partitionName);
-    await tx.wait();
-    return tx.hash;
+    blockchainLogger.info(`[Create Partition] Request for: ${partitionName}`);
+    try {
+        const tx = await sukukContract.createPartition(partitionName);
+        blockchainLogger.info(`[Create Partition] Tx Sent: ${tx.hash}`);
+        await tx.wait();
+        blockchainLogger.info(`[Create Partition] Confirmed: ${partitionName}`);
+        return tx.hash;
+    } catch (error: any) {
+        blockchainLogger.error(`[Create Partition] Failed: ${error.message}`);
+        throw error;
+    }
 };
 
 export const getPartitions = async () => {
@@ -22,14 +29,23 @@ export const issueTokens = async (
         ethers.toUtf8Bytes(partitionName)
     );
 
-    const tx = await sukukContract.issueByPartition(
-        partitionId,
-        investorWallet,
-        ethers.parseUnits(amount, 18)
-    );
+    blockchainLogger.info(`[Issue Tokens] Partition: ${partitionName}, To: ${investorWallet}, Amount: ${amount}`);
 
-    await tx.wait();
-    return tx.hash;
+    try {
+        const tx = await sukukContract.issueByPartition(
+            partitionId,
+            investorWallet,
+            ethers.parseUnits(amount, 18)
+        );
+        blockchainLogger.info(`[Issue Tokens] Tx Sent: ${tx.hash}`);
+
+        await tx.wait();
+        blockchainLogger.info(`[Issue Tokens] Confirmed.`);
+        return tx.hash;
+    } catch (error: any) {
+        blockchainLogger.error(`[Issue Tokens] Failed: ${error.message}`);
+        throw error;
+    }
 };
 
 export const getBalance = async (
@@ -52,9 +68,17 @@ export const getBalance = async (
  * Regulator action
  */
 export const addToWhitelist = async (walletAddress: string) => {
-    const tx = await sukukContract.addToWhitelist(walletAddress);
-    await tx.wait();
-    return tx.hash;
+    blockchainLogger.info(`[Whitelist] Adding: ${walletAddress}`);
+    try {
+        const tx = await sukukContract.addToWhitelist(walletAddress);
+        blockchainLogger.info(`[Whitelist] Tx Sent: ${tx.hash}`);
+        await tx.wait();
+        blockchainLogger.info(`[Whitelist] Confirmed.`);
+        return tx.hash;
+    } catch (error: any) {
+        blockchainLogger.error(`[Whitelist] Failed: ${error.message}`);
+        throw error;
+    }
 };
 
 
@@ -66,14 +90,23 @@ export const transferTokens = async (
 ) => {
     const partitionId = ethers.keccak256(ethers.toUtf8Bytes(partitionName));
 
-    // Uses the "Operator" function we added to the Smart Contract
-    const tx = await sukukContract.operatorTransferByPartition(
-        partitionId,
-        fromWallet,
-        toWallet,
-        ethers.parseUnits(amount, 18)
-    );
+    blockchainLogger.info(`[Transfer] ${amount} from ${fromWallet} to ${toWallet} (Partition: ${partitionName})`);
 
-    await tx.wait();
-    return tx.hash;
+    try {
+        // Uses the "Operator" function we added to the Smart Contract
+        const tx = await sukukContract.operatorTransferByPartition(
+            partitionId,
+            fromWallet,
+            toWallet,
+            ethers.parseUnits(amount, 18)
+        );
+        blockchainLogger.info(`[Transfer] Tx Sent: ${tx.hash}`);
+
+        await tx.wait();
+        blockchainLogger.info(`[Transfer] Confirmed.`);
+        return tx.hash;
+    } catch (error: any) {
+        blockchainLogger.error(`[Transfer] Failed: ${error.message}`);
+        throw error;
+    }
 };

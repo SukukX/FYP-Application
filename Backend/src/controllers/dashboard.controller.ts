@@ -31,7 +31,9 @@ const getCommonAlerts = async (userId: number) => {
     } else if (kyc.status === KYCStatus.rejected) {
         alerts.push({
             type: "error",
-            message: `KYC Rejected: ${kyc.rejection_reason}. Please resubmit.`,
+            title: "KYC Application Rejected",
+            message: kyc.rejection_reason,
+            footer: "Please resubmit your application.",
             action: "/kyc",
         });
     } else if (kyc.status === KYCStatus.pending) {
@@ -68,19 +70,77 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
 
         const alerts = await getCommonAlerts(userId);
 
-        // Mock Data for now
+        // Fetch Investments with Sukuk and Property details
+        const investments = await prisma.investment.findMany({
+            where: { investor_id: userId },
+            include: {
+                sukuk: {
+                    include: {
+                        property: {
+                            select: {
+                                property_type: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let totalInvestment = 0;
+        let totalTokens = 0;
+        const propertySet = new Set();
+        const portfolioMap: Record<string, number> = {};
+
+        investments.forEach(inv => {
+            // Only count if they still own tokens (though tokens_owned should be > 0 ideally)
+            if (inv.tokens_owned > 0) {
+                totalTokens += inv.tokens_owned;
+
+                // Value = Tokens * Current Price
+                const currentValue = inv.tokens_owned * parseFloat(inv.sukuk.token_price.toString());
+                totalInvestment += currentValue;
+
+                propertySet.add(inv.sukuk.property_id);
+
+                // Portfolio Distribution by Property Type
+                const type = inv.sukuk.property.property_type;
+                if (!portfolioMap[type]) portfolioMap[type] = 0;
+                portfolioMap[type] += currentValue;
+            }
+        });
+
         const stats = {
-            totalInvestment: 0,
-            totalTokens: 0,
-            propertiesOwned: 0,
-            totalProfitEarned: 0,
+            totalInvestment,
+            totalTokens,
+            propertiesOwned: propertySet.size,
+            totalProfitEarned: 0, // Placeholder for now
         };
+
+        // Format for Recharts
+        const colors: Record<string, string> = {
+            residential: "hsl(var(--primary))",
+            commercial: "hsl(var(--accent))",
+            industrial: "hsl(var(--verified))",
+        };
+
+        const portfolio = Object.keys(portfolioMap).map(type => ({
+            name: type.charAt(0).toUpperCase() + type.slice(1),
+            value: portfolioMap[type],
+            color: colors[type] || "#8884d8"
+        }));
+
+        const wallet = await prisma.wallet.findFirst({
+            where: { user_id: userId, is_primary: true }
+        });
 
         res.json({
             role: "investor",
             stats,
+            portfolio, // Send this for the Pie Chart
             alerts,
-            recentActivity: [], // To be implemented with Transaction Logs
+            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
+            walletAddress: wallet?.wallet_address || null,
+            recentActivity: [],
         });
     } catch (error) {
         console.error("Investor Dashboard Error:", error);
@@ -132,8 +192,11 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             if (p.sukuks && p.sukuks.length > 0) {
                 const sukuk = p.sukuks[0];
 
-                // Calculate sold tokens from investments
-                const soldForSukuk = sukuk.investments.reduce((sum, inv) => sum + inv.tokens_owned, 0);
+                // Calculate sold tokens (Exclude Owner's "Inventory" holding)
+                const soldForSukuk = sukuk.investments.reduce((sum, inv) => {
+                    if (inv.investor_id === userId) return sum;
+                    return sum + inv.tokens_owned;
+                }, 0);
 
                 tokensSold += soldForSukuk;
                 totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
@@ -149,14 +212,22 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
 
         const formattedProperties = properties.map(p => {
             const sukuk = p.sukuks[0];
-            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => sum + inv.tokens_owned, 0) : 0;
+            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => {
+                if (inv.investor_id === userId) return sum;
+                return sum + inv.tokens_owned;
+            }, 0) : 0;
+
             return {
                 ...p,
                 total_tokens: sukuk ? sukuk.total_tokens : 0,
                 tokens_available: sukuk ? sukuk.available_tokens : 0,
-                tokens_sold: soldForSukuk, // Add tokens_sold to response
+                tokens_sold: soldForSukuk,
                 token_price: sukuk ? sukuk.token_price : 0,
             };
+        });
+
+        const wallet = await prisma.wallet.findFirst({
+            where: { user_id: userId, is_primary: true }
         });
 
         res.json({
@@ -165,6 +236,8 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             alerts,
             listings: formattedProperties,
             kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
+            checkWallet: wallet?.wallet_address || null, // Keeping naming distinct just in case, or use walletAddress for consistency
+            walletAddress: wallet?.wallet_address || null,
             mfaEnabled: (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false,
         });
     } catch (error) {
