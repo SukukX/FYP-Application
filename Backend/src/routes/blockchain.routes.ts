@@ -77,4 +77,13 @@ router.delete(
 router.get("/balance", authenticate, getBalance);
 router.get("/partitions", authenticate, getPartitions);
 
+// --- DEV TOOL: Blockchain Sync ---
+import { syncBlockchain } from "../controllers/blockchain-sync.controller";
+router.post(
+    "/sync",
+    authenticate,
+    authorize(["admin", "owner"]),
+    syncBlockchain
+);
+
 export default router;

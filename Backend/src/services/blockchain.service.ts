@@ -110,3 +110,52 @@ export const transferTokens = async (
         throw error;
     }
 };
+
+/**
+ * [DEV TOOL] Sync State
+ * Re-creates partition and re-issues tokens if blockchain was reset.
+ * This is needed because Hardhat local node is ephemeral.
+ */
+export const syncState = async (
+    partitionName: string,
+    ownerWallet: string,
+    totalAmount: string
+) => {
+    blockchainLogger.info(`[Sync] Checking partition: ${partitionName}`);
+    try {
+        // Try to create partition (will fail if exists, which is fine)
+        try {
+            await createPartition(partitionName);
+            blockchainLogger.info(`[Sync] Partition ${partitionName} created.`);
+        } catch (e: any) {
+            const errorMessage = e?.info?.error?.message || e.message || JSON.stringify(e);
+            if (errorMessage.includes("Partition already exists") || errorMessage.includes("revert")) {
+                blockchainLogger.info(`[Sync] Partition ${partitionName} already exists.`);
+            } else {
+                blockchainLogger.info(`[Sync] Create Partition info: ${e.message}`);
+            }
+        }
+
+        // Check owner balance. If 0, re-issue tokens
+        const balance = await getBalance(partitionName, ownerWallet);
+        if (parseFloat(balance) === 0) {
+            blockchainLogger.info(`[Sync] Owner balance is 0. Re-issuing ${totalAmount} tokens.`);
+
+            // Whitelist owner first
+            try {
+                await addToWhitelist(ownerWallet);
+            } catch (e: any) {
+                blockchainLogger.info(`[Sync] Whitelist: ${e.message}`);
+            }
+
+            await issueTokens(partitionName, ownerWallet, totalAmount);
+        } else {
+            blockchainLogger.info(`[Sync] Owner has balance ${balance}. Skipping issuance.`);
+        }
+
+        return true;
+    } catch (error: any) {
+        blockchainLogger.error(`[Sync] Failed: ${error.message}`);
+        return false;
+    }
+};

@@ -42,7 +42,7 @@ export class AuthService {
         const { email, password, mfaCode } = data;
 
         // Include mfa_setting in query to check status
-        const user = await prisma.user.findUnique({
+        const userMFA = await prisma.user.findUnique({
             where: { email },
             include: { mfa_setting: true }
         });
@@ -51,17 +51,17 @@ export class AuthService {
             where: { email },
             include: { kyc_request: true }
         });
-        if (!user) {
+        if (!userMFA) {
             throw new Error("Invalid credentials");
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = await bcrypt.compare(password, userMFA.password);
         if (!isMatch) {
             throw new Error("Invalid credentials");
         }
 
         // Check MFA
-        if (user.mfa_setting?.is_enabled) {
+        if (userMFA.mfa_setting?.is_enabled) {
             if (!mfaCode) {
                 // Signal controller that MFA is required
                 return { mfaRequired: true };
@@ -69,7 +69,7 @@ export class AuthService {
 
             // Verify Code
             const verified = speakeasy.totp.verify({
-                secret: user.mfa_setting.secret!,
+                secret: userMFA.mfa_setting.secret!,
                 encoding: "base32",
                 token: mfaCode,
                 window: 1 // Allow 30s slack
@@ -80,7 +80,7 @@ export class AuthService {
             }
         }
 
-        return this.generateToken(user);
+        return this.generateToken(userMFA);
     }
 
     private generateToken(user: any) {
