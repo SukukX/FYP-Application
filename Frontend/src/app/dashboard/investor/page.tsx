@@ -27,7 +27,7 @@ import { useAuth } from "@/context/auth-context";
 import { KYCWizard } from "@/components/KYCWizard";
 
 export default function InvestorDashboard() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, setUser } = useAuth();
     // Initialize with currentUser status, but allow local updates from dashboard fetch
     const [kycStatus, setKycStatus] = useState<string>(currentUser?.kycStatus || 'not_submitted');
 
@@ -62,6 +62,10 @@ export default function InvestorDashboard() {
             setPortfolio(res.data.portfolio);
             if (res.data.kycStatus) {
                 setKycStatus(res.data.kycStatus);
+                // Instantly sync the global context so profile unifies
+                if (currentUser && currentUser.kycStatus !== res.data.kycStatus) {
+                    setUser({ ...currentUser, kycStatus: res.data.kycStatus });
+                }
             }
             if (res.data.walletAddress) {
                 setConnectedWallet(res.data.walletAddress);

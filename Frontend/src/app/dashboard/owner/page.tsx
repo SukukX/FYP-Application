@@ -30,10 +30,11 @@ import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { KYCWizard } from "@/components/KYCWizard";
-
+import { useAuth } from "@/context/auth-context";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function OwnerDashboard() {
+    const { user: currentUser, setUser } = useAuth();
     const [listingModalOpen, setListingModalOpen] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
@@ -43,7 +44,16 @@ export default function OwnerDashboard() {
         tokensSold: 0,
         totalRevenue: 0
     });
-    const [kycStatus, setKycStatus] = useState("not_submitted");
+    // const [kycStatus, setKycStatus] = useState("not_submitted");
+    const [kycStatus, setKycStatus] = useState<string>(currentUser?.kycStatus || 'not_submitted');
+
+    // Sync with currentUser if it updates (e.g. on page reload)
+    useEffect(() => {
+        if (currentUser?.kycStatus) {
+            setKycStatus(currentUser.kycStatus);
+        }
+    }, [currentUser]);
+
     const [mfaEnabled, setMfaEnabled] = useState(false);
     const [alerts, setAlerts] = useState<any[]>([]); // Added alerts state
     const [kycModalOpen, setKycModalOpen] = useState(false);
@@ -86,7 +96,13 @@ export default function OwnerDashboard() {
             const res = await api.get("/dashboard/owner");
             setListings(res.data.listings);
             setStats(res.data.stats);
-            setKycStatus(res.data.kycStatus);
+            if (res.data.kycStatus) {
+                setKycStatus(res.data.kycStatus);
+                // Instantly sync the global context so profile unifies
+                if (currentUser && currentUser.kycStatus !== res.data.kycStatus) {
+                    setUser({ ...currentUser, kycStatus: res.data.kycStatus });
+                }
+            }
             setMfaEnabled(res.data.mfaEnabled);
             if (res.data.walletAddress) {
                 setConnectedWallet(res.data.walletAddress);
@@ -292,10 +308,9 @@ export default function OwnerDashboard() {
                             <h1 className="text-4xl font-bold text-primary mb-2">Owner Dashboard</h1>
                             <p className="text-muted-foreground">Manage your property listings and tokenization</p>
                         </div>
-                        <Badge className="bg-pending text-primary">
+                        <Badge className={`${kycStatus === 'approved' ? 'bg-verified' : kycStatus === 'rejected' ? 'bg-destructive' : 'bg-pending'} text-primary-foreground`}>
                             <Shield className="h-3 w-3 mr-1" />
-                            KYC Pending
-                            KYC Pending
+                            {kycStatus === 'approved' ? 'KYC Verified' : kycStatus === 'rejected' ? 'KYC Rejected' : kycStatus === 'pending' ? 'KYC Pending' : 'KYC Not Submitted'}
                         </Badge>
                     </div>
                     {/* Render Smart Alerts */}
@@ -580,7 +595,7 @@ export default function OwnerDashboard() {
                     <CardContent>
                         <div className="space-y-4">
                             {/* KYC Item */}
-                            {kycStatus !== 'approved' && (
+                            {kycStatus && kycStatus !== 'approved' && (
                                 <div
                                     className={`flex items-start gap-4 p-4 border rounded-lg transition-colors cursor-pointer hover:bg-accent/5`}
                                     onClick={() => (kycStatus === 'not_submitted' || kycStatus === 'rejected') && setKycModalOpen(true)}
