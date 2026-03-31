@@ -78,7 +78,14 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
                     include: {
                         property: {
                             select: {
-                                property_type: true
+                                property_type: true,
+                                title: true,
+                                location: true,
+                                documents: {
+                                    where: { file_type: { startsWith: 'image/' } },
+                                    select: { file_path: true },
+                                    take: 1
+                                }
                             }
                         }
                     }
@@ -133,11 +140,41 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
             where: { user_id: userId, is_primary: true }
         });
 
+        // Build per-investment holdings for the portfolio page
+        const holdings = investments
+            .filter(inv => inv.tokens_owned > 0)
+            .map(inv => {
+                const sukuk = inv.sukuk as any;
+                const property = sukuk.property as any;
+                const currentPrice = parseFloat(sukuk.token_price.toString());
+                const purchaseValue = parseFloat((inv.purchase_value ?? 0).toString());
+                const currentValue = inv.tokens_owned * currentPrice;
+                const profitLoss = currentValue - purchaseValue;
+                const profitLossPct = purchaseValue > 0 ? ((profitLoss / purchaseValue) * 100) : 0;
+                return {
+                    investment_id: inv.investment_id,
+                    property_id: sukuk.property_id,
+                    property_title: property.title,
+                    property_location: property.location,
+                    property_type: property.property_type,
+                    property_image: property.documents?.[0]?.file_path || null,
+                    sukuk_id: sukuk.sukuk_id,
+                    tokens_owned: inv.tokens_owned,
+                    price_per_token: currentPrice,
+                    purchase_value: purchaseValue,
+                    current_value: currentValue,
+                    profit_loss: profitLoss,
+                    profit_loss_pct: profitLossPct,
+                    purchase_date: inv.purchase_date,
+                };
+            });
+
         const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
         res.json({
             role: "investor",
             stats,
             portfolio,
+            holdings,
             alerts,
             kycStatus: kycRecord?.status || "not_submitted",
             kycRejectionReason: kycRecord?.rejection_reason || null,
