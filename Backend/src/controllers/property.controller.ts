@@ -11,7 +11,7 @@ import { Request, Response } from "express";
  * 
  * DB Interactions: Property, Sukuk, Document, VerificationLog tables.
  */
-import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus } from "@prisma/client";
+import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus, AuditModule, AuditAction, ActorRole } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
@@ -203,7 +203,7 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// Submit for Verification
+// Submit (or Resubmit) for Verification
 export const submitForVerification = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;
@@ -218,12 +218,44 @@ export const submitForVerification = async (req: AuthRequest, res: Response) => 
             return;
         }
 
+        // Allow submission from 'draft' or resubmission from 'rejected'
+        if (!['draft', 'rejected'].includes(property.verification_status)) {
+            res.status(400).json({ message: "Only draft or rejected properties can be submitted for review." });
+            return;
+        }
+
+        const files = (req as any).files as { [fieldname: string]: Express.Multer.File[] };
+        const isResubmission = property.verification_status === 'rejected';
+
+        // If resubmitting with new documents, delete old ones and upload fresh
+        if (isResubmission && files && Object.keys(files).length > 0) {
+            await prisma.document.deleteMany({ where: { property_id: propertyId } });
+
+            if (files['images']) {
+                for (const file of files['images']) {
+                    await prisma.document.create({
+                        data: { property_id: propertyId, file_name: file.originalname, file_type: file.mimetype, file_path: file.path, file_hash: "pending_hash", verification_status: VerificationStatusDoc.pending },
+                    });
+                }
+            }
+            if (files['documents']) {
+                for (const file of files['documents']) {
+                    await prisma.document.create({
+                        data: { property_id: propertyId, file_name: file.originalname, file_type: file.mimetype, file_path: file.path, file_hash: "pending_hash", verification_status: VerificationStatusDoc.pending },
+                    });
+                }
+            }
+        }
+
         const updated = await prisma.property.update({
             where: { property_id: propertyId },
             data: { verification_status: VerificationStatus.pending },
         });
 
-        res.json({ message: "Property submitted for verification", property: updated });
+        res.json({
+            message: isResubmission ? "Property resubmitted for verification" : "Property submitted for verification",
+            property: updated
+        });
     } catch (error) {
         console.error("Submit Verification Error:", error);
         res.status(500).json({ message: "Server error" });
@@ -299,6 +331,11 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
         });
 
         if (!property) return res.status(404).json({ message: "Property not found" });
+
+        // Idempotency guard: if already in target state, return success without re-logging
+        if (property.verification_status === status) {
+            return res.json({ message: `Property is already ${status}. No changes made.` });
+        }
 
         // ======================================================
         // TOKENIZATION LOGIC (Only if Approving)
@@ -378,7 +415,7 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                 data: { verification_status: status as VerificationStatus },
             });
 
-            // 3. Log it
+            // 3. Log in VerificationLog
             const logStatus = status === "approved" ? "approved" : "rejected";
             await tx.verificationLog.create({
                 data: {
@@ -389,7 +426,20 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                 }
             });
 
-            // 4. If Approved, Active Sukuk & Create Investment
+            // 4. Write AuditLog atomically
+            const regulatorRole = req.user?.role as string;
+            await tx.auditLog.create({
+                data: {
+                    user_id: regulatorId,
+                    actorRole: regulatorRole === 'admin' ? ActorRole.ADMIN : ActorRole.REGULATOR,
+                    module: AuditModule.PROPERTY,
+                    action: status === 'approved' ? AuditAction.APPROVED : AuditAction.REJECTED,
+                    targetId: propertyId,
+                    targetName: property.title,
+                    details: { remarks: remarks || null, tokenized: !!blockchainTxHash },
+                    ip_address: req.ip || null,
+                }
+            });
             if (status === "approved" && blockchainTxHash) {
                 const sukuk = property.sukuks[0];
 

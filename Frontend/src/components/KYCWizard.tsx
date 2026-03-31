@@ -7,45 +7,46 @@ import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import Webcam from "react-webcam";
 import Tesseract from "tesseract.js";
-import { Camera, Upload, RefreshCw, Check, X } from "lucide-react";
+import { Camera, Upload, RefreshCw, Check, X, ImageIcon } from "lucide-react";
+
+interface ExistingKyc {
+    cnic_number: string;
+    cnic_expiry: string;
+    cnic_front: string | null;
+    cnic_back: string | null;
+    face_scan: string | null;
+}
 
 interface KYCWizardProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
+    existingKyc?: ExistingKyc | null; // Pass existing data on resubmission
 }
 
-export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
-    /**
-     * [COMPONENT] KYC Wizard
-     * ----------------------
-     * Purpose: Smart identity verification modal.
-     * Features:
-     * - Live Webcam Capture: 'react-webcam' integration.
-     * - OCR Scanning: 'tesseract.js' to extract CNIC data from images.
-     * - State Management: Multi-step form data collection.
-     */
+export function KYCWizard({ open, onOpenChange, onSuccess, existingKyc }: KYCWizardProps) {
+    const isResubmission = !!existingKyc;
+
     const [kycData, setKycData] = useState({
-        cnic: "",
-        expiry: "",
+        cnic: existingKyc?.cnic_number || "",
+        expiry: existingKyc?.cnic_expiry
+            ? new Date(existingKyc.cnic_expiry).toISOString().split("T")[0]
+            : "",
         front: null as File | null,
         back: null as File | null,
-        face: null as File | null
+        face: null as File | null,
     });
+
     const [isLoading, setIsLoading] = useState(false);
     const [scanning, setScanning] = useState<"front" | "back" | "face" | null>(null);
     const [ocrStatus, setOcrStatus] = useState<string>("");
     const { toast } = useToast();
-
     const webcamRef = useRef<Webcam>(null);
 
-    // [LOGIC] Image Capture
-    // Captures screenshot from video feed, converts to File object.
     const capture = useCallback(async (mode: "front" | "back" | "face") => {
         const imageSrc = webcamRef.current?.getScreenshot();
         if (!imageSrc) return;
 
-        // Convert base64 to file
         const res = await fetch(imageSrc);
         const blob = await res.blob();
         const file = new File([blob], `${mode}_scan.jpg`, { type: "image/jpeg" });
@@ -56,22 +57,17 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
             return;
         }
 
-        // OCR Verification for CNIC
         if (kycData.cnic) {
             setOcrStatus("Scanning text...");
             try {
-                // [FEATURE] Client-Side OCR
-                // Attempts to read text from the captured image to verify/autofill CNIC.
-                const { data: { text } } = await Tesseract.recognize(imageSrc, 'eng', {
+                const { data: { text } } = await Tesseract.recognize(imageSrc, "eng", {
                     logger: m => {
-                        if (m.status === 'recognizing text') {
+                        if (m.status === "recognizing text") {
                             setOcrStatus(`Scanning: ${Math.round(m.progress * 100)}%`);
                         }
-                    }
+                    },
                 });
 
-                // Simple check if CNIC number (or part of it) is in the text
-                // Removing dashes for looser matching
                 const cleanCNIC = kycData.cnic.replace(/-/g, "");
                 const cleanText = text.replace(/[^0-9]/g, "");
 
@@ -92,7 +88,6 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
                 setOcrStatus("OCR Failed. Please try again or upload manually.");
             }
         } else {
-            // If no CNIC entered yet, just save
             setKycData(prev => ({ ...prev, [mode]: file }));
             setScanning(null);
         }
@@ -100,8 +95,13 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
     }, [webcamRef, kycData.cnic]);
 
     const handleSubmit = async () => {
-        if (!kycData.cnic || !kycData.expiry || !kycData.front || !kycData.back) {
-            toast({ title: "Incomplete", description: "Please provide all required KYC details.", variant: "destructive" });
+        if (!kycData.cnic || !kycData.expiry) {
+            toast({ title: "Incomplete", description: "Please fill in CNIC number and expiry.", variant: "destructive" });
+            return;
+        }
+        // For new submissions (not resubmission), require front and back
+        if (!isResubmission && (!kycData.front || !kycData.back)) {
+            toast({ title: "Incomplete", description: "Please provide CNIC front and back images.", variant: "destructive" });
             return;
         }
 
@@ -110,17 +110,16 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
             const formData = new FormData();
             formData.append("cnic_number", kycData.cnic);
             formData.append("cnic_expiry", kycData.expiry);
-            formData.append("cnic_front", kycData.front);
-            formData.append("cnic_back", kycData.back);
-            if (kycData.face) {
-                formData.append("face_scan", kycData.face);
-            }
+            // Only append files if user picked new ones — backend preserves old ones otherwise
+            if (kycData.front) formData.append("cnic_front", kycData.front);
+            if (kycData.back) formData.append("cnic_back", kycData.back);
+            if (kycData.face) formData.append("face_scan", kycData.face);
 
             await api.post("/kyc/submit", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
-            toast({ title: "Submitted", description: "KYC submitted for verification." });
+            toast({ title: isResubmission ? "Resubmitted" : "Submitted", description: "KYC submitted for verification." });
             onSuccess();
             onOpenChange(false);
         } catch (error: any) {
@@ -130,11 +129,69 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
         }
     };
 
+    /** Helper: shows existing doc thumbnail + change option */
+    const DocField = ({
+        label,
+        mode,
+        existingUrl,
+        currentFile,
+    }: {
+        label: string;
+        mode: "front" | "back" | "face";
+        existingUrl?: string | null;
+        currentFile: File | null;
+    }) => (
+        <div className="space-y-2">
+            <Label>{label}{mode !== "face" ? "" : " (Optional)"}</Label>
+            {/* Show existing image if available and user hasn't replaced it */}
+            {existingUrl && !currentFile && (
+                <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
+                    <img src={existingUrl} alt={label} className="h-14 w-20 object-cover rounded border" />
+                    <div className="flex-1 text-xs text-muted-foreground">
+                        <p className="font-medium text-primary">Current document</p>
+                        <p>Will be kept unless you upload a new one</p>
+                    </div>
+                </div>
+            )}
+            {currentFile && (
+                <div className="flex items-center gap-2 text-xs text-green-600">
+                    <Check className="h-3 w-3" /> New file selected: {currentFile.name}
+                    <button className="text-muted-foreground hover:text-destructive ml-1" onClick={() => setKycData(prev => ({ ...prev, [mode]: null }))}>
+                        <X className="h-3 w-3" />
+                    </button>
+                </div>
+            )}
+            <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setScanning(mode)}>
+                    <Camera className="mr-2 h-4 w-4" /> Scan
+                </Button>
+                <div className="relative flex-1">
+                    <Input
+                        type="file"
+                        accept="image/*"
+                        className="opacity-0 absolute inset-0 cursor-pointer"
+                        onChange={(e) => e.target.files && setKycData(prev => ({ ...prev, [mode]: e.target.files![0] }))}
+                    />
+                    <Button variant="secondary" className="w-full pointer-events-none">
+                        <Upload className="mr-2 h-4 w-4" /> {existingUrl ? "Replace" : "Upload"}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle>Complete KYC Verification</DialogTitle>
+                    <DialogTitle>
+                        {isResubmission ? "Resubmit KYC Verification" : "Complete KYC Verification"}
+                    </DialogTitle>
+                    {isResubmission && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Your previous documents are shown below. You can update any field or keep existing documents.
+                        </p>
+                    )}
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     {scanning ? (
@@ -146,9 +203,8 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
                                 className="w-full h-full object-cover"
                                 videoConstraints={{ facingMode: "environment" }}
                             />
-                            {/* Overlays */}
                             <div className="absolute inset-0 border-2 border-white/50 pointer-events-none">
-                                {scanning === 'face' ? (
+                                {scanning === "face" ? (
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <div className="w-64 h-80 border-4 border-accent rounded-[50%]"></div>
                                     </div>
@@ -156,7 +212,6 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
                                     <div className="absolute inset-12 border-2 border-accent rounded-lg"></div>
                                 )}
                             </div>
-
                             <div className="absolute bottom-4 flex flex-col items-center gap-2 w-full">
                                 {ocrStatus && <div className="bg-black/70 text-white px-3 py-1 rounded-full text-sm">{ocrStatus}</div>}
                                 <div className="flex gap-4">
@@ -192,78 +247,31 @@ export function KYCWizard({ open, onOpenChange, onSuccess }: KYCWizardProps) {
                                 </div>
                             </div>
 
-                            {/* Front Image */}
-                            <div className="space-y-2">
-                                <Label>CNIC Front</Label>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" className="flex-1" onClick={() => setScanning('front')}>
-                                        <Camera className="mr-2 h-4 w-4" /> Scan
-                                    </Button>
-                                    <div className="relative flex-1">
-                                        <Input
-                                            type="file"
-                                            accept="image/*"
-                                            className="opacity-0 absolute inset-0 cursor-pointer"
-                                            onChange={(e) => e.target.files && setKycData({ ...kycData, front: e.target.files[0] })}
-                                        />
-                                        <Button variant="secondary" className="w-full pointer-events-none">
-                                            <Upload className="mr-2 h-4 w-4" /> Upload
-                                        </Button>
-                                    </div>
-                                </div>
-                                {kycData.front && <div className="text-xs text-green-600 flex items-center"><Check className="h-3 w-3 mr-1" /> Captured</div>}
-                            </div>
-
-                            {/* Back Image */}
-                            <div className="space-y-2">
-                                <Label>CNIC Back</Label>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" className="flex-1" onClick={() => setScanning('back')}>
-                                        <Camera className="mr-2 h-4 w-4" /> Scan
-                                    </Button>
-                                    <div className="relative flex-1">
-                                        <Input
-                                            type="file"
-                                            accept="image/*"
-                                            className="opacity-0 absolute inset-0 cursor-pointer"
-                                            onChange={(e) => e.target.files && setKycData({ ...kycData, back: e.target.files[0] })}
-                                        />
-                                        <Button variant="secondary" className="w-full pointer-events-none">
-                                            <Upload className="mr-2 h-4 w-4" /> Upload
-                                        </Button>
-                                    </div>
-                                </div>
-                                {kycData.back && <div className="text-xs text-green-600 flex items-center"><Check className="h-3 w-3 mr-1" /> Captured</div>}
-                            </div>
-
-                            {/* Face Scan */}
-                            <div className="space-y-2">
-                                <Label>Face Scan (Optional)</Label>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" className="flex-1" onClick={() => setScanning('face')}>
-                                        <Camera className="mr-2 h-4 w-4" /> Scan Face
-                                    </Button>
-                                    <div className="relative flex-1">
-                                        <Input
-                                            type="file"
-                                            accept="image/*"
-                                            className="opacity-0 absolute inset-0 cursor-pointer"
-                                            onChange={(e) => e.target.files && setKycData({ ...kycData, face: e.target.files[0] })}
-                                        />
-                                        <Button variant="secondary" className="w-full pointer-events-none">
-                                            <Upload className="mr-2 h-4 w-4" /> Upload
-                                        </Button>
-                                    </div>
-                                </div>
-                                {kycData.face && <div className="text-xs text-green-600 flex items-center"><Check className="h-3 w-3 mr-1" /> Captured</div>}
-                            </div>
+                            <DocField
+                                label="CNIC Front"
+                                mode="front"
+                                existingUrl={existingKyc?.cnic_front}
+                                currentFile={kycData.front}
+                            />
+                            <DocField
+                                label="CNIC Back"
+                                mode="back"
+                                existingUrl={existingKyc?.cnic_back}
+                                currentFile={kycData.back}
+                            />
+                            <DocField
+                                label="Face Scan (Optional)"
+                                mode="face"
+                                existingUrl={existingKyc?.face_scan}
+                                currentFile={kycData.face}
+                            />
                         </div>
                     )}
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
                     <Button onClick={handleSubmit} disabled={isLoading}>
-                        {isLoading ? "Submitting..." : "Submit KYC"}
+                        {isLoading ? "Submitting..." : isResubmission ? "Resubmit KYC" : "Submit KYC"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

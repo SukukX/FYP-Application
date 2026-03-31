@@ -133,12 +133,21 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
             where: { user_id: userId, is_primary: true }
         });
 
+        const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
         res.json({
             role: "investor",
             stats,
-            portfolio, // Send this for the Pie Chart
+            portfolio,
             alerts,
-            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
+            kycStatus: kycRecord?.status || "not_submitted",
+            kycRejectionReason: kycRecord?.rejection_reason || null,
+            existingKyc: kycRecord ? {
+                cnic_number: kycRecord.cnic_number,
+                cnic_expiry: kycRecord.cnic_expiry,
+                cnic_front: kycRecord.cnic_front,
+                cnic_back: kycRecord.cnic_back,
+                face_scan: kycRecord.face_scan,
+            } : null,
             walletAddress: wallet?.wallet_address || null,
             recentActivity: [],
         });
@@ -230,13 +239,35 @@ export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
             where: { user_id: userId, is_primary: true }
         });
 
+        // Fetch rejected KYC reason (if any)
+        const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
+
+        // Fetch rejected properties for resubmission
+        const rejectedProperties = properties.filter(p => p.verification_status === 'rejected');
+
         res.json({
             role: "owner",
             stats,
             alerts,
             listings: formattedProperties,
-            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
-            checkWallet: wallet?.wallet_address || null, // Keeping naming distinct just in case, or use walletAddress for consistency
+            kycStatus: kycRecord?.status || "not_submitted",
+            kycRejectionReason: kycRecord?.rejection_reason || null,
+            existingKyc: kycRecord ? {
+                cnic_number: kycRecord.cnic_number,
+                cnic_expiry: kycRecord.cnic_expiry,
+                cnic_front: kycRecord.cnic_front,
+                cnic_back: kycRecord.cnic_back,
+                face_scan: kycRecord.face_scan,
+            } : null,
+            rejectedProperties: rejectedProperties.map(p => ({
+                property_id: p.property_id,
+                title: p.title,
+                location: p.location,
+                verification_status: p.verification_status,
+                rejection_reason: p.verification_logs?.[0]?.comments || null,
+                updated_at: p.updated_at,
+            })),
+            checkWallet: wallet?.wallet_address || null,
             walletAddress: wallet?.wallet_address || null,
             mfaEnabled: (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false,
         });
@@ -278,24 +309,36 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             approvedListings: await prisma.property.count({ where: { verification_status: "approved" } }),
         };
 
-        // Fetch Queues
-        const kycQueue = await prisma.kYCRequest.findMany({
+        // Fetch Queues with is_resubmission flag
+        const rawKycQueue = await prisma.kYCRequest.findMany({
             where: { status: KYCStatus.pending },
-            take: 5,
+            take: 50,
             orderBy: { submitted_at: 'asc' },
             include: { user: { select: { name: true, email: true, role: true } } }
         });
+        // A KYC is a resubmission if it was previously rejected (reviewed_at set + reviewed_by set)
+        const kycQueue = rawKycQueue.map(k => ({
+            ...k,
+            is_resubmission: !!(k.reviewed_at && k.reviewed_by),
+        }));
 
-        const listingQueue = await prisma.property.findMany({
+        const rawListingQueue = await prisma.property.findMany({
             where: { verification_status: "pending" },
-            take: 5,
+            take: 50,
             orderBy: { created_at: 'asc' },
             include: {
                 owner: { select: { name: true, email: true } },
                 sukuks: { select: { total_tokens: true } },
-                documents: true // Include documents for review
+                documents: true,
+                verification_logs: { orderBy: { timestamp: 'desc' }, take: 1 },
             }
         });
+        // A listing is a resubmission if it has a prior verification log (was previously rejected)
+        const listingQueue = rawListingQueue.map(l => ({
+            ...l,
+            is_resubmission: l.verification_logs.length > 0,
+            rejection_reason: l.verification_logs[0]?.comments || null,
+        }));
 
         res.json({
             role: "regulator",
@@ -305,6 +348,38 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
         });
     } catch (error) {
         console.error("Regulator Dashboard Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * [ACTION] Get Audit Logs
+ * Purpose: Returns a list of all KYC and Property actions for regulator/admin review.
+ * Filters: ?module=KYC|PROPERTY  ?action=APPROVED|REJECTED
+ */
+export const getAuditLogs = async (req: AuthRequest, res: Response) => {
+    try {
+        const { module, action } = req.query;
+
+        const logs = await prisma.auditLog.findMany({
+            where: {
+                ...(module ? { module: module as any } : {}),
+                ...(action ? { action: action as any } : {}),
+                // Only show KYC and PROPERTY logs (exclude nulls from legacy rows)
+                module: module ? (module as any) : { not: null },
+            },
+            include: {
+                user: {
+                    select: { name: true, email: true, role: true }
+                }
+            },
+            orderBy: { timestamp: "desc" },
+            take: 200, // Cap at 200 most recent
+        });
+
+        res.json({ logs });
+    } catch (error) {
+        console.error("Get Audit Logs Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

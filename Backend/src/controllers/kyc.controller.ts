@@ -38,16 +38,18 @@ export const submitKYC = async (req: AuthRequest, res: Response) => {
 
         console.log(`[KYC] Files Received:`, files ? Object.keys(files) : "None");
 
-        if (!files || !files.cnic_front || !files.cnic_back) {
-            console.log("[KYC] Validation Error: Missing Files");
-            res.status(400).json({ message: "CNIC front and back images are required" });
-            return;
-        }
-
         // Check if KYC already exists
         const existingKYC = await prisma.kYCRequest.findUnique({
             where: { user_id: userId },
         });
+
+        // For new submissions, front and back are required
+        // For resubmissions (existingKYC present), they are optional (keep old if not provided)
+        if (!existingKYC && (!files || !files.cnic_front || !files.cnic_back)) {
+            console.log("[KYC] Validation Error: Missing Files for new submission");
+            res.status(400).json({ message: "CNIC front and back images are required" });
+            return;
+        }
 
         if (existingKYC && existingKYC.status === "approved") {
             console.log("[KYC] Already Approved");
@@ -55,20 +57,20 @@ export const submitKYC = async (req: AuthRequest, res: Response) => {
             return;
         }
 
+        // Build update data — preserve old files if no new ones uploaded
         const kycData = {
             user_id: userId,
-            cnic_number,
-            cnic_expiry: new Date(cnic_expiry),
-            cnic_front: files.cnic_front[0].path, // Cloudinary URL
-            cnic_back: files.cnic_back[0].path, // Cloudinary URL
-            face_scan: files.face_scan ? files.face_scan[0].path : null, // Cloudinary URL
+            cnic_number: cnic_number || existingKYC?.cnic_number,
+            cnic_expiry: cnic_expiry ? new Date(cnic_expiry) : (existingKYC?.cnic_expiry ?? new Date()),
+            cnic_front: files?.cnic_front?.[0]?.path || existingKYC?.cnic_front || "",
+            cnic_back: files?.cnic_back?.[0]?.path || existingKYC?.cnic_back || "",
+            face_scan: files?.face_scan?.[0]?.path || existingKYC?.face_scan || null,
             status: KYCStatus.pending,
             submitted_at: new Date(),
         };
 
         if (existingKYC) {
-            // [LOGIC] Resubmission
-            // If rejected previously, allow update. If approved, blocked by earlier check.
+            // [LOGIC] Resubmission — update with preserved or new data
             console.log("[KYC] Updating existing request");
             const updatedKYC = await prisma.kYCRequest.update({
                 where: { user_id: userId },
@@ -128,22 +130,55 @@ export const getKYCStatus = async (req: AuthRequest, res: Response) => {
 export const approveKYC = async (req: AuthRequest, res: Response) => {
     try {
         const regulatorId = req.user?.user_id;
+        const regulatorRole = req.user?.role as string;
         const { userId } = req.body;
 
         if (!regulatorId) return res.status(401).json({ message: "Unauthorized" });
 
-        const kyc = await prisma.kYCRequest.update({
+        // Idempotency guard: pre-fetch current KYC state
+        const existingKyc = await prisma.kYCRequest.findUnique({
             where: { user_id: Number(userId) },
-            data: {
-                status: KYCStatus.approved,
-                reviewed_by: regulatorId,
-                reviewed_at: new Date(),
-                rejection_reason: null
-            },
+            include: { user: { select: { name: true } } }
+        });
+        if (!existingKyc) return res.status(404).json({ message: "KYC record not found" });
+        if (existingKyc.status === KYCStatus.approved) {
+            return res.json({ message: "KYC is already approved. No changes made.", data: existingKyc });
+        }
+
+        // [TRANSACTION] Atomically update KYC status + write audit log
+        const [kyc] = await prisma.$transaction(async (tx) => {
+            // 1. Name snapshot reused from pre-fetch (saves a query inside transaction)
+            const targetUser = existingKyc.user;
+
+            // 2. Update KYC status
+            const updatedKyc = await tx.kYCRequest.update({
+                where: { user_id: Number(userId) },
+                data: {
+                    status: KYCStatus.approved,
+                    reviewed_by: regulatorId,
+                    reviewed_at: new Date(),
+                    rejection_reason: null
+                },
+            });
+
+            // 3. Write audit log atomically
+            await tx.auditLog.create({
+                data: {
+                    user_id: regulatorId,
+                    actorRole: regulatorRole === 'admin' ? 'ADMIN' : 'REGULATOR',
+                    module: 'KYC',
+                    action: 'APPROVED',
+                    targetId: Number(userId),
+                    targetName: targetUser?.name || 'Unknown',
+                    details: { comments: 'KYC approved by regulator' },
+                    ip_address: req.ip || null,
+                }
+            });
+
+            return [updatedKyc];
         });
 
         // [BLOCKCHAIN INTEGRATION] Auto-Whitelist if wallet exists
-        // -------------------------------------------------------
         const userWallet = await prisma.wallet.findFirst({
             where: { user_id: Number(userId), is_primary: true }
         });
@@ -151,19 +186,15 @@ export const approveKYC = async (req: AuthRequest, res: Response) => {
         if (userWallet) {
             try {
                 console.log(`[KYC Approval] Whitelisting wallet ${userWallet.wallet_address}...`);
-                // Dynamic import to avoid circular dependency if service imports controller (unlikely but safe)
                 const blockchainService = require("../services/blockchain.service");
                 await blockchainService.addToWhitelist(userWallet.wallet_address);
                 console.log(`[KYC Approval] Whitelist Success.`);
             } catch (err: any) {
                 console.error(`[KYC Approval] Whitelist Failed:`, err.message);
-                // Don't fail the HTTP request, just log it.
             }
-        } else {
-            console.log(`[KYC Approval] No wallet found for user. verify when they connect wallet.`);
         }
 
-        // Create notification
+        // Send notification (outside transaction — non-critical)
         await prisma.notification.create({
             data: {
                 user_id: Number(userId),
@@ -182,22 +213,55 @@ export const approveKYC = async (req: AuthRequest, res: Response) => {
 export const rejectKYC = async (req: AuthRequest, res: Response) => {
     try {
         const regulatorId = req.user?.user_id;
+        const regulatorRole = req.user?.role as string;
         const { userId, reason, comments } = req.body;
         const rejectionReason = reason || comments;
 
         if (!regulatorId) return res.status(401).json({ message: "Unauthorized" });
+        if (!rejectionReason) return res.status(400).json({ message: "Rejection reason is required" });
 
-        const kyc = await prisma.kYCRequest.update({
+        // Idempotency guard: pre-fetch current KYC state
+        const existingKyc = await prisma.kYCRequest.findUnique({
             where: { user_id: Number(userId) },
-            data: {
-                status: KYCStatus.rejected,
-                reviewed_by: regulatorId,
-                reviewed_at: new Date(),
-                rejection_reason: rejectionReason
-            },
+            include: { user: { select: { name: true } } }
+        });
+        if (!existingKyc) return res.status(404).json({ message: "KYC record not found" });
+        if (existingKyc.status === KYCStatus.rejected && existingKyc.rejection_reason === rejectionReason) {
+            return res.json({ message: "KYC is already rejected with the same reason. No changes made." });
+        }
+
+        // [TRANSACTION] Atomically update KYC status + write audit log
+        await prisma.$transaction(async (tx) => {
+            // 1. Name snapshot reused from pre-fetch
+            const targetUser = existingKyc.user;
+
+            // 2. Update KYC status
+            await tx.kYCRequest.update({
+                where: { user_id: Number(userId) },
+                data: {
+                    status: KYCStatus.rejected,
+                    reviewed_by: regulatorId,
+                    reviewed_at: new Date(),
+                    rejection_reason: rejectionReason
+                },
+            });
+
+            // 3. Write audit log atomically
+            await tx.auditLog.create({
+                data: {
+                    user_id: regulatorId,
+                    actorRole: regulatorRole === 'admin' ? 'ADMIN' : 'REGULATOR',
+                    module: 'KYC',
+                    action: 'REJECTED',
+                    targetId: Number(userId),
+                    targetName: targetUser?.name || 'Unknown',
+                    details: { reason: rejectionReason },
+                    ip_address: req.ip || null,
+                }
+            });
         });
 
-        // Create notification
+        // Send notification (outside transaction — non-critical)
         await prisma.notification.create({
             data: {
                 user_id: Number(userId),
@@ -206,7 +270,7 @@ export const rejectKYC = async (req: AuthRequest, res: Response) => {
             }
         });
 
-        res.json({ message: "KYC Rejected", data: kyc });
+        res.json({ message: "KYC Rejected" });
     } catch (error: any) {
         console.error("KYC Reject Error:", error);
         res.status(500).json({ message: "Server error" });

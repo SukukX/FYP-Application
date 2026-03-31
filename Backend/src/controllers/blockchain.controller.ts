@@ -444,7 +444,7 @@ export const transferTokens = async (req: Request, res: Response) => {
             await tx.transactionLog.create({ data: { user_id: senderUserId, sukuk_id: sukuk.sukuk_id, type: 'sell', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' } });
             await tx.transactionLog.create({ data: { user_id: receiverWalletRecord.user_id, sukuk_id: sukuk.sukuk_id, type: 'buy', amount: amountToTransfer * Number(sukuk.token_price), tx_hash: txHash, status: 'success' } });
 
-            await tx.auditLog.create({ data: { user_id: senderUserId, action: 'TRANSFER_ASSET', details: `Transfer ${amount} tokens to ${toWallet}`, ip_address: req.ip || "127.0.0.1" } });
+            await tx.auditLog.create({ data: { user_id: senderUserId, module: 'PROPERTY', action: 'UPDATED', details: { description: `Transfer ${amount} tokens to ${toWallet}` }, ip_address: req.ip || "127.0.0.1" } });
         });
 
         res.json({ message: "Transfer successful", txHash });
@@ -516,8 +516,9 @@ export const distributeProfit = async (req: Request, res: Response) => {
             await tx.auditLog.create({
                 data: {
                     user_id: ownerUserId,
-                    action: 'PROFIT_DISTRIBUTION',
-                    details: `Distributed $${totalAmount}`,
+                    module: 'PROPERTY',
+                    action: 'UPDATED',
+                    details: { description: `Distributed $${totalAmount}` },
                     ip_address: req.ip || "127.0.0.1"
                 }
             });

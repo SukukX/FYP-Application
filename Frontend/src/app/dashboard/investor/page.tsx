@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Wallet, Building2, Shield } from "lucide-react";
+import { TrendingUp, Wallet, Building2, Shield, XCircle, RefreshCw } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +49,8 @@ export default function InvestorDashboard() {
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [walletAddress, setWalletAddress] = useState("");
     const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+    const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
+    const [existingKyc, setExistingKyc] = useState<any | null>(null);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -62,11 +64,12 @@ export default function InvestorDashboard() {
             setPortfolio(res.data.portfolio);
             if (res.data.kycStatus) {
                 setKycStatus(res.data.kycStatus);
-                // Instantly sync the global context so profile unifies
                 if (currentUser && currentUser.kycStatus !== res.data.kycStatus) {
                     setUser({ ...currentUser, kycStatus: res.data.kycStatus });
                 }
             }
+            setKycRejectionReason(res.data.kycRejectionReason || null);
+            setExistingKyc(res.data.existingKyc || null);
             if (res.data.walletAddress) {
                 setConnectedWallet(res.data.walletAddress);
             }
@@ -283,20 +286,26 @@ export default function InvestorDashboard() {
                             {kycStatus === 'rejected' && (
                                 <div className="flex items-start gap-4 p-4 border rounded-lg bg-destructive/5 border-destructive/20">
                                     <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                                        <Shield className="h-5 w-5 text-destructive" />
+                                        <XCircle className="h-5 w-5 text-destructive" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="font-semibold text-destructive mb-1">Verification Rejected</h3>
+                                        {kycRejectionReason && (
+                                            <p className="text-sm text-destructive/80 mb-1 font-medium">
+                                                Reason: {kycRejectionReason}
+                                            </p>
+                                        )}
                                         <p className="text-sm text-muted-foreground mb-2">
-                                            There was an issue with your submission. Please prevent common errors like blurry images and try again.
+                                            Your previous documents are pre-loaded. Upload new ones only where needed.
                                         </p>
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="border-destructive/50 hover:bg-destructive/10 text-destructive"
+                                            className="gap-1 border-destructive/50 hover:bg-destructive/10 text-destructive"
                                             onClick={() => setKycModalOpen(true)}
                                         >
-                                            Resubmit Documents
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                            Resubmit KYC
                                         </Button>
                                     </div>
                                 </div>
@@ -373,6 +382,7 @@ export default function InvestorDashboard() {
             <KYCWizard
                 open={kycModalOpen}
                 onOpenChange={setKycModalOpen}
+                existingKyc={kycStatus === 'rejected' ? existingKyc : null}
                 onSuccess={() => {
                     fetchDashboardData();
                     toast({
