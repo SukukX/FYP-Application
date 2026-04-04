@@ -7,7 +7,7 @@ const router = Router();
 router.post(
     "/buy",
     authenticate,
-    authorize(["investor"]),
+    authorize(["user"]),
     buyTokens
 );
 

@@ -30,6 +30,7 @@ import blockchainRoutes from "./routes/blockchain.routes";
 import rentRoutes from "./routes/rent.routes";
 import priceRoutes from "./routes/price.routes";
 import transactionRoutes from "./routes/transaction.routes";
+import exchangeRoutes from "./routes/exchange.routes";
 
 const app = express();
 
@@ -52,5 +53,6 @@ app.use("/api/blockchain", blockchainRoutes);
 app.use("/api/rent", rentRoutes);
 app.use("/api/prices", priceRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/exchange",exchangeRoutes);
 
 export default app;

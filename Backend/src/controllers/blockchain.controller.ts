@@ -553,6 +553,10 @@ export const addWallet = async (req: Request, res: Response) => {
         const { wallet } = req.body;
         const userId = (req as any).user?.user_id || (req as any).user?.id;
 
+        if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+            return res.status(400).json({ error: "Invalid Ethereum wallet address format" });
+        }
+
         console.log(`[Wallet] Request to link ${wallet} to User ${userId}`);
 
         if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet" });

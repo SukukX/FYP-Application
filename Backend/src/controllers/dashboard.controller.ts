@@ -1,23 +1,13 @@
 import { Response } from "express";
-/**
- * [MODULE] Dashboard Controller
- * ---------------------------
- * Purpose: Centralized data fetcher for all user roles.
- * Features:
- * - Smart Alerts: Checks KYC/MFA status and pushes UI warnings.
- * - Role Logic: Separate handlers for Investor, Owner, Regulator.
- */
 import { PrismaClient, KYCStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
-// [HELPER] Smart Alerts System
-// Logic: Checks DB state (KYC = pending/rejected, MFA = disabled) -> Returns Actionable UI Alerts.
+// [HELPER] Smart Alerts System (Unchanged)
 const getCommonAlerts = async (userId: number) => {
     const alerts = [];
 
-    // Check KYC Status
     const kyc = await prisma.kYCRequest.findUnique({
         where: { user_id: userId },
     });
@@ -32,7 +22,7 @@ const getCommonAlerts = async (userId: number) => {
         alerts.push({
             type: "error",
             title: "KYC Application Rejected",
-            message: kyc.rejection_reason,
+            message: kyc.rejection_reason || "Check your documents.",
             footer: "Please resubmit your application.",
             action: "/kyc",
         });
@@ -44,7 +34,6 @@ const getCommonAlerts = async (userId: number) => {
         });
     }
 
-    // Check MFA Status
     const mfa = await prisma.mFASetting.findUnique({
         where: { user_id: userId },
     });
@@ -60,7 +49,12 @@ const getCommonAlerts = async (userId: number) => {
     return alerts;
 };
 
-export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
+/**
+ * [MODULE] Unified User Dashboard
+ * -------------------------------
+ * Consolidates Owner and Investor views into a single unified JSON response.
+ */
+export const getUserDashboard = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;
         if (!userId) {
@@ -68,20 +62,66 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
             return;
         }
 
+        // 1. Fetch Common Global Data
         const alerts = await getCommonAlerts(userId);
+        const wallet = await prisma.wallet.findFirst({
+            where: { user_id: userId, is_primary: true }
+        });
+        const kycStatus = (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted";
+        const mfaEnabled = (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false;
 
-        // Fetch Investments with Sukuk and Property details
+        // ==========================================
+        // 2. Fetch & Calculate OWNER Data
+        // ==========================================
+        const properties = await prisma.property.findMany({
+            where: { owner_id: userId },
+            orderBy: { created_at: 'desc' },
+            include: {
+                sukuks: {
+                    include: { investments: true } 
+                },
+                verification_logs: {
+                    orderBy: { timestamp: 'desc' },
+                    take: 1
+                },
+                documents: true
+            }
+        });
+
+        const activeListings = properties.filter(p => p.listing_status === 'active').length;
+        const pendingApprovals = properties.filter(p => p.verification_status === 'pending').length;
+        let tokensSold = 0;
+        let totalRevenue = 0;
+
+        const formattedProperties = properties.map(p => {
+            const sukuk = p.sukuks[0];
+            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => {
+                if (inv.investor_id === userId) return sum; // Exclude owner's inventory
+                return sum + inv.tokens_owned;
+            }, 0) : 0;
+
+            if (sukuk) {
+                tokensSold += soldForSukuk;
+                totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
+            }
+
+            return {
+                ...p,
+                total_tokens: sukuk ? sukuk.total_tokens : 0,
+                tokens_available: sukuk ? sukuk.available_tokens : 0,
+                tokens_sold: soldForSukuk,
+                token_price: sukuk ? sukuk.token_price : 0,
+            };
+        });
+
+        // ==========================================
+        // 3. Fetch & Calculate INVESTOR Data
+        // ==========================================
         const investments = await prisma.investment.findMany({
-            where: { investor_id: userId },
+            where: { investor_id: userId, tokens_owned: { gt: 0 } },
             include: {
                 sukuk: {
-                    include: {
-                        property: {
-                            select: {
-                                property_type: true
-                            }
-                        }
-                    }
+                    include: { property: true } // Fetches the full property for the active investments list
                 }
             }
         });
@@ -92,29 +132,15 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
         const portfolioMap: Record<string, number> = {};
 
         investments.forEach(inv => {
-            // Only count if they still own tokens (though tokens_owned should be > 0 ideally)
-            if (inv.tokens_owned > 0) {
-                totalTokens += inv.tokens_owned;
+            totalTokens += inv.tokens_owned;
+            const currentValue = inv.tokens_owned * parseFloat(inv.sukuk.token_price.toString());
+            totalInvestment += currentValue;
+            propertySet.add(inv.sukuk.property_id);
 
-                // Value = Tokens * Current Price
-                const currentValue = inv.tokens_owned * parseFloat(inv.sukuk.token_price.toString());
-                totalInvestment += currentValue;
-
-                propertySet.add(inv.sukuk.property_id);
-
-                // Portfolio Distribution by Property Type
-                const type = inv.sukuk.property.property_type;
-                if (!portfolioMap[type]) portfolioMap[type] = 0;
-                portfolioMap[type] += currentValue;
-            }
+            const type = inv.sukuk.property.property_type;
+            if (!portfolioMap[type]) portfolioMap[type] = 0;
+            portfolioMap[type] += currentValue;
         });
-
-        const stats = {
-            totalInvestment,
-            totalTokens,
-            propertiesOwned: propertySet.size,
-            totalProfitEarned: 0, // Placeholder for now
-        };
 
         // Format for Recharts
         const colors: Record<string, string> = {
@@ -129,128 +155,40 @@ export const getInvestorDashboard = async (req: AuthRequest, res: Response) => {
             color: colors[type] || "#8884d8"
         }));
 
-        const wallet = await prisma.wallet.findFirst({
-            where: { user_id: userId, is_primary: true }
+        // ==========================================
+        // 4. Send the Unified Response
+        // ==========================================
+        res.json({
+            role: "user", // The new unified role
+            summary: {
+                isOwner: properties.length > 0,
+                isInvestor: investments.length > 0,
+            },
+            common: {
+                alerts,
+                kycStatus,
+                walletAddress: wallet?.wallet_address || null,
+                mfaEnabled
+            },
+            ownerData: {
+                stats: { activeListings, tokensSold, totalRevenue, pendingApprovals },
+                listings: formattedProperties
+            },
+            investorData: {
+                stats: { totalInvestment, totalTokens, propertiesOwned: propertySet.size, totalProfitEarned: 0 },
+                portfolio,
+                investments // FIXED: Now passing the investments array to the frontend UI!
+            }
         });
 
-        res.json({
-            role: "investor",
-            stats,
-            portfolio, // Send this for the Pie Chart
-            alerts,
-            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
-            walletAddress: wallet?.wallet_address || null,
-            recentActivity: [],
-        });
     } catch (error) {
-        console.error("Investor Dashboard Error:", error);
+        console.error("Unified Dashboard Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };
 
 /**
- * [ROLE] Owner Dashboard
- * Data:
- * - Active Listings (Properties w/ 'active' status).
- * - Sales Stats (Calculated from Sukuk Investments).
- * - Action Items (KYC pending, etc.).
- */
-export const getOwnerDashboard = async (req: AuthRequest, res: Response) => {
-    try {
-        const userId = req.user?.user_id;
-        if (!userId) {
-            res.status(401).json({ message: "Unauthorized" });
-            return;
-        }
-
-        const alerts = await getCommonAlerts(userId);
-
-        // Fetch Owner's Properties
-        const properties = await prisma.property.findMany({
-            where: { owner_id: userId },
-            orderBy: { created_at: 'desc' },
-            include: {
-                sukuks: {
-                    include: { investments: true } // Include investments to calculate sold tokens
-                },
-                verification_logs: {
-                    orderBy: { timestamp: 'desc' },
-                    take: 1
-                },
-                documents: true
-            }
-        });
-
-        // Calculate Stats
-        const activeListings = properties.filter(p => p.listing_status === 'active').length;
-        const pendingApprovals = properties.filter(p => p.verification_status === 'pending').length;
-
-        let tokensSold = 0;
-        let totalRevenue = 0;
-
-        properties.forEach(p => {
-            if (p.sukuks && p.sukuks.length > 0) {
-                const sukuk = p.sukuks[0];
-
-                // Calculate sold tokens (Exclude Owner's "Inventory" holding)
-                const soldForSukuk = sukuk.investments.reduce((sum, inv) => {
-                    if (inv.investor_id === userId) return sum;
-                    return sum + inv.tokens_owned;
-                }, 0);
-
-                tokensSold += soldForSukuk;
-                totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
-            }
-        });
-
-        const stats = {
-            activeListings,
-            tokensSold,
-            totalRevenue,
-            pendingApprovals,
-        };
-
-        const formattedProperties = properties.map(p => {
-            const sukuk = p.sukuks[0];
-            const soldForSukuk = sukuk ? sukuk.investments.reduce((sum, inv) => {
-                if (inv.investor_id === userId) return sum;
-                return sum + inv.tokens_owned;
-            }, 0) : 0;
-
-            return {
-                ...p,
-                total_tokens: sukuk ? sukuk.total_tokens : 0,
-                tokens_available: sukuk ? sukuk.available_tokens : 0,
-                tokens_sold: soldForSukuk,
-                token_price: sukuk ? sukuk.token_price : 0,
-            };
-        });
-
-        const wallet = await prisma.wallet.findFirst({
-            where: { user_id: userId, is_primary: true }
-        });
-
-        res.json({
-            role: "owner",
-            stats,
-            alerts,
-            listings: formattedProperties,
-            kycStatus: (await prisma.kYCRequest.findUnique({ where: { user_id: userId } }))?.status || "not_submitted",
-            checkWallet: wallet?.wallet_address || null, // Keeping naming distinct just in case, or use walletAddress for consistency
-            walletAddress: wallet?.wallet_address || null,
-            mfaEnabled: (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false,
-        });
-    } catch (error) {
-        console.error("Owner Dashboard Error:", error);
-        res.status(500).json({ message: "Server error" });
-    }
-};
-
-/**
- * [ROLE] Regulator Dashboard
- * Data:
- * - Queues: Pending KYC & Property Verification requests.
- * - Platform Stats: Total Users, Active Sukuks.
+ * [ROLE] Regulator Dashboard (Unchanged)
  */
 export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => {
     try {
@@ -260,25 +198,19 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             return;
         }
 
-        // Real Data for Queues
-        const pendingKYC = await prisma.kYCRequest.count({
-            where: { status: KYCStatus.pending },
-        });
-
-        const pendingListings = await prisma.property.count({
-            where: { verification_status: "pending" },
-        });
+        const pendingKYC = await prisma.kYCRequest.count({ where: { status: KYCStatus.pending } });
+        const pendingListings = await prisma.property.count({ where: { verification_status: "pending" } });
 
         const stats = {
             pendingKYC,
             pendingListings,
             totalUsers: await prisma.user.count(),
-            approvedUsers: await prisma.user.count({ where: { role: { not: "guest" }, kyc_request: { status: "approved" } } }),
+            // FIXED: Swapped { not: "guest" } for "user" to match our new unified role enum
+            approvedUsers: await prisma.user.count({ where: { role: "user", kyc_request: { status: "approved" } } }),
             activeSukuks: await prisma.sukuk.count({ where: { status: "active" } }),
             approvedListings: await prisma.property.count({ where: { verification_status: "approved" } }),
         };
 
-        // Fetch Queues
         const kycQueue = await prisma.kYCRequest.findMany({
             where: { status: KYCStatus.pending },
             take: 5,
@@ -293,16 +225,11 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             include: {
                 owner: { select: { name: true, email: true } },
                 sukuks: { select: { total_tokens: true } },
-                documents: true // Include documents for review
+                documents: true
             }
         });
 
-        res.json({
-            role: "regulator",
-            stats,
-            kycQueue,
-            listingQueue,
-        });
+        res.json({ role: "regulator", stats, kycQueue, listingQueue });
     } catch (error) {
         console.error("Regulator Dashboard Error:", error);
         res.status(500).json({ message: "Server error" });

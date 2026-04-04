@@ -8,7 +8,7 @@ const router = Router();
 router.post(
     "/request",
     authenticate,
-    authorize(["owner"]),
+    authorize(["user"]),
     controller.requestUpdate
 );
 

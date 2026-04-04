@@ -3,6 +3,9 @@ import * as blockchainService from "../services/blockchain.service";
 
 const prisma = new PrismaClient();
 
+// Helper function to force the script to pause and let Hardhat catch up
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
  * Auto-Sync Script
  * Runs automatically when backend starts to sync blockchain state
@@ -32,20 +35,49 @@ async function autoSyncBlockchain() {
                 const partitionName = `Sukuk_Asset_${sukuk.property_id}`;
                 console.log(`   🔧 Syncing: ${partitionName} (${sukuk.property.title})`);
 
-                const success = await blockchainService.syncState(
-                    partitionName,
-                    ownerWallet.wallet_address,
-                    sukuk.total_tokens.toString()
-                );
+                let success = false;
+                let retries = 3;
 
-                if (success) {
-                    console.log(`   ✅ ${partitionName} synced successfully`);
-                } else {
-                    console.log(`   ❌ ${partitionName} sync failed`);
+                while (retries > 0 && !success) {
+                    try {
+                        // STEP 1: Create Partition
+                        try {
+                            await blockchainService.createPartition(partitionName);
+                            await delay(1500); // 🟢 Give Hardhat time to clear the mempool
+                        } catch (e: any) {
+                            if (!e.message.includes("already exists") && !e.message.includes("revert")) throw e;
+                        }
+
+                        // STEP 2: Check Balance
+                        const balance = await blockchainService.getBalance(partitionName, ownerWallet.wallet_address);
+                        
+                        if (parseFloat(balance) === 0) {
+                            // STEP 3: Whitelist Owner
+                            try {
+                                await blockchainService.addToWhitelist(ownerWallet.wallet_address);
+                                await delay(1500); // 🟢 The crucial breath before issuing tokens!
+                            } catch (e: any) {
+                                if (!e.message.includes("already whitelisted") && !e.message.includes("revert")) throw e;
+                            }
+
+                            // STEP 4: Issue Tokens
+                            await blockchainService.issueTokens(partitionName, ownerWallet.wallet_address, sukuk.total_tokens.toString());
+                            await delay(1500); // 🟢 Give Hardhat time to settle
+                        }
+                        
+                        console.log(`   ✅ ${partitionName} synced successfully`);
+                        success = true;
+
+                    } catch (err: any) {
+                        retries--;
+                        if (retries > 0) {
+                            console.log(`   ⏳ Sync collision detected. Retrying in 3 seconds... (${retries} attempts left)`);
+                            await delay(3000);
+                        } else {
+                            console.log(`   ❌ ${partitionName} sync failed: ${err.message}`);
+                        }
+                    }
                 }
-
-                // Small delay to prevent nonce conflicts
-                await new Promise(resolve => setTimeout(resolve, 500));
             } else {
                 console.log(`   ⚠️  Sukuk_Asset_${sukuk.property_id}: No owner wallet found`);
             }
@@ -76,20 +108,33 @@ async function autoSyncBlockchain() {
             const wallet = kyc.user.wallets[0];
 
             if (wallet) {
-                try {
-                    console.log(`   🔓 Whitelisting: ${kyc.user.name} (${wallet.wallet_address.slice(0, 10)}...)`);
-                    await blockchainService.addToWhitelist(wallet.wallet_address);
-                    whitelistedCount++;
+                let wRetries = 3;
+                let wSuccess = false;
 
-                    // Small delay to prevent nonce conflicts
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (error: any) {
-                    // Ignore if already whitelisted
-                    if (error.message.includes("already whitelisted")) {
-                        console.log(`   ✓  Already whitelisted: ${kyc.user.name}`);
+                while (wRetries > 0 && !wSuccess) {
+                    try {
+                        console.log(`   🔓 Whitelisting: ${kyc.user.name} (${wallet.wallet_address.slice(0, 10)}...)`);
+                        await blockchainService.addToWhitelist(wallet.wallet_address);
+                        
+                        console.log(`   ✅ Whitelisted: ${kyc.user.name}`);
+                        wSuccess = true;
                         whitelistedCount++;
-                    } else {
-                        console.log(`   ⚠️  Failed to whitelist ${kyc.user.name}: ${error.message}`);
+                        
+                        await delay(1500); // 🟢 1.5-second delay between successful whitelists
+                    } catch (error: any) {
+                        if (error.message.includes("already whitelisted") || error.message.includes("revert")) {
+                            console.log(`   ✓  Already whitelisted: ${kyc.user.name}`);
+                            wSuccess = true; 
+                            whitelistedCount++;
+                        } else {
+                            wRetries--;
+                            if (wRetries > 0) {
+                                console.log(`   ⏳ Whitelist collision. Retrying in 3 seconds...`);
+                                await delay(3000);
+                            } else {
+                                console.log(`   ⚠️  Failed to whitelist ${kyc.user.name}: ${error.message}`);
+                            }
+                        }
                     }
                 }
             } else {

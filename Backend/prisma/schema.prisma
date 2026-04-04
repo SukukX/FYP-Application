@@ -13,7 +13,7 @@ model User {
   name          String   @db.VarChar(256)
   email         String   @unique @db.VarChar(256)
   password      String   @db.VarChar(256)
-  role          Role     @default(investor)
+  role          Role     @default(user)
   phone_number  String?  @db.VarChar(15)
   country       String?  @db.VarChar(100)
   address       String?  @db.VarChar(256)
@@ -31,6 +31,7 @@ model User {
   sessions            Session[]
   notifications       Notification[]
   audit_logs          AuditLog[]
+  secondary_listings SecondaryListing[]
   
   // Investor relations
   investments         Investment[]
@@ -54,9 +55,7 @@ model User {
 }
 
 enum Role {
-  guest
-  investor
-  owner
+  user       
   admin
   regulator
 }
@@ -229,6 +228,7 @@ model Sukuk {
   transaction_logs     TransactionLog[]
   compliance_records   ComplianceRecord[]
   price_history        TokenPriceHistory[]
+  secondary_listings SecondaryListing[]
 
   @@map("sukuks")
 }
@@ -434,3 +434,26 @@ enum NotificationType {
   security
 }
 
+// Status for secondary market trades
+enum SecondaryListingStatus {
+  open
+  completed
+  cancelled
+}
+
+model SecondaryListing {
+  listing_id         Int                    @id @default(autoincrement())
+  seller_id          Int
+  sukuk_id           Int
+  token_amount       Int                    // Exact number of tokens in this bundle
+  total_asking_price Decimal                @db.Decimal(15, 4) // Total PKR price for the whole bundle
+  status             SecondaryListingStatus @default(open)
+  created_at         DateTime               @default(now())
+  updated_at         DateTime               @updatedAt
+
+  // Relations
+  seller             User                   @relation(fields: [seller_id], references: [user_id])
+  sukuk              Sukuk                  @relation(fields: [sukuk_id], references: [sukuk_id])
+
+  @@map("secondary_listings")
+}
