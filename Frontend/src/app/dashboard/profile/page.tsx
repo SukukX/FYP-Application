@@ -64,6 +64,8 @@ export default function ProfilePage() {
     // MFA State
     const [isMfaLoading, setIsMfaLoading] = useState(false);
 
+
+
     useEffect(() => {
         if (user) {
             setFormData({
@@ -429,8 +431,9 @@ export default function ProfilePage() {
                                     <h2 className="text-2xl font-bold text-foreground">{user.name}</h2>
                                     <div className="flex items-center justify-center md:justify-start gap-2 mt-1 flex-wrap">
                                         <Badge variant="secondary" className="capitalize">{user.role}</Badge>
-                                        <Badge className={user.kyc_request?.status === 'approved' ? 'bg-verified' : user.kyc_request?.status === 'rejected' ? 'bg-destructive' : 'bg-pending'}>
-                                            {user.kyc_request?.status === 'approved' ? 'Verified Investor' : user.kyc_request?.status === 'rejected' ? 'KYC Rejected' : 'KYC Pending'}
+                                        <Badge className={`${(user.kycStatus || user.kyc_request?.status) === 'approved' ? 'bg-verified' : (user.kycStatus || user.kyc_request?.status) === 'rejected' ? 'bg-destructive' : 'bg-pending'} text-primary-foreground`}>
+                                            <Shield className="h-3 w-3 mr-1" />
+                                            {(user.kycStatus || user.kyc_request?.status) === 'approved' ? 'KYC Verified' : (user.kycStatus || user.kyc_request?.status) === 'rejected' ? 'KYC Rejected' : (user.kycStatus || user.kyc_request?.status) === 'pending' ? 'KYC Pending' : 'KYC Not Submitted'}
                                         </Badge>
                                     </div>
                                     <div className="mt-3 flex items-center justify-center md:justify-start gap-2 max-w-md">

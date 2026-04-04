@@ -22,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Building2, SlidersHorizontal, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink, Wallet } from "lucide-react";
+import { Plus, Building2, SlidersHorizontal, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink, Wallet, RefreshCw, XCircle, UploadCloud } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -30,10 +30,11 @@ import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { KYCWizard } from "@/components/KYCWizard";
-
+import { useAuth } from "@/context/auth-context";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function OwnerDashboard() {
+    const { user: currentUser, setUser } = useAuth();
     const [listingModalOpen, setListingModalOpen] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
@@ -43,7 +44,16 @@ export default function OwnerDashboard() {
         tokensSold: 0,
         totalRevenue: 0
     });
-    const [kycStatus, setKycStatus] = useState("not_submitted");
+    // const [kycStatus, setKycStatus] = useState("not_submitted");
+    const [kycStatus, setKycStatus] = useState<string>(currentUser?.kycStatus || 'not_submitted');
+
+    // Sync with currentUser if it updates (e.g. on page reload)
+    useEffect(() => {
+        if (currentUser?.kycStatus) {
+            setKycStatus(currentUser.kycStatus);
+        }
+    }, [currentUser]);
+
     const [mfaEnabled, setMfaEnabled] = useState(false);
     const [alerts, setAlerts] = useState<any[]>([]); // Added alerts state
     const [kycModalOpen, setKycModalOpen] = useState(false);
@@ -53,6 +63,12 @@ export default function OwnerDashboard() {
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [walletAddress, setWalletAddress] = useState("");
     const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+    const [rejectedProperties, setRejectedProperties] = useState<any[]>([]);
+    const [kycRejectionReason, setKycRejectionReason] = useState<string | null>(null);
+    const [existingKyc, setExistingKyc] = useState<any | null>(null);
+    const [resubmitPropertyId, setResubmitPropertyId] = useState<number | null>(null);
+    const [resubmitFiles, setResubmitFiles] = useState<{ images: File[], docs: File[] }>({ images: [], docs: [] });
+    const [isResubmitting, setIsResubmitting] = useState(false);
     const router = useRouter();
 
     const [listingData, setListingData] = useState({
@@ -86,7 +102,15 @@ export default function OwnerDashboard() {
             const res = await api.get("/dashboard/owner");
             setListings(res.data.listings);
             setStats(res.data.stats);
-            setKycStatus(res.data.kycStatus);
+            if (res.data.kycStatus) {
+                setKycStatus(res.data.kycStatus);
+                if (currentUser && currentUser.kycStatus !== res.data.kycStatus) {
+                    setUser({ ...currentUser, kycStatus: res.data.kycStatus });
+                }
+            }
+            setKycRejectionReason(res.data.kycRejectionReason || null);
+            setRejectedProperties(res.data.rejectedProperties || []);
+            setExistingKyc(res.data.existingKyc || null);
             setMfaEnabled(res.data.mfaEnabled);
             if (res.data.walletAddress) {
                 setConnectedWallet(res.data.walletAddress);
@@ -281,6 +305,28 @@ export default function OwnerDashboard() {
         }
     };
 
+    const handleResubmitProperty = async (propertyId: number) => {
+        if (isResubmitting) return;
+        setIsResubmitting(true);
+        try {
+            const formData = new FormData();
+            resubmitFiles.images.forEach(f => formData.append('images', f));
+            resubmitFiles.docs.forEach(f => formData.append('documents', f));
+
+            await api.post(`/properties/${propertyId}/submit`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast({ title: 'Resubmitted', description: 'Property sent back to regulator for review.' });
+            setResubmitPropertyId(null);
+            setResubmitFiles({ images: [], docs: [] });
+            fetchDashboardData();
+        } catch (error: any) {
+            toast({ title: 'Resubmission Failed', description: error.response?.data?.message || 'Failed to resubmit.', variant: 'destructive' });
+        } finally {
+            setIsResubmitting(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background">
             <Navbar />
@@ -292,10 +338,9 @@ export default function OwnerDashboard() {
                             <h1 className="text-4xl font-bold text-primary mb-2">Owner Dashboard</h1>
                             <p className="text-muted-foreground">Manage your property listings and tokenization</p>
                         </div>
-                        <Badge className="bg-pending text-primary">
+                        <Badge className={`${kycStatus === 'approved' ? 'bg-verified' : kycStatus === 'rejected' ? 'bg-destructive' : 'bg-pending'} text-primary-foreground`}>
                             <Shield className="h-3 w-3 mr-1" />
-                            KYC Pending
-                            KYC Pending
+                            {kycStatus === 'approved' ? 'KYC Verified' : kycStatus === 'rejected' ? 'KYC Rejected' : kycStatus === 'pending' ? 'KYC Pending' : 'KYC Not Submitted'}
                         </Badge>
                     </div>
                     {/* Render Smart Alerts */}
@@ -344,6 +389,63 @@ export default function OwnerDashboard() {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* ===== REJECTED ITEMS SECTION ===== */}
+                {(kycStatus === 'rejected' || rejectedProperties.length > 0) && (
+                    <Card className="mb-6 border-destructive/40 bg-destructive/5">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-destructive">
+                                <XCircle className="h-5 w-5" />
+                                Action Required — Rejected Items
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Rejected KYC */}
+                            {kycStatus === 'rejected' && (
+                                <div className="flex items-start justify-between gap-4 p-4 rounded-lg border border-destructive/30 bg-background">
+                                    <div className="flex items-start gap-3">
+                                        <Shield className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <h4 className="font-semibold text-primary">KYC Verification Rejected</h4>
+                                            {kycRejectionReason && (
+                                                <p className="text-sm text-muted-foreground mt-1">
+                                                    <span className="font-medium text-destructive">Reason: </span>{kycRejectionReason}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-muted-foreground mt-1">Upload corrected documents and resubmit.</p>
+                                        </div>
+                                    </div>
+                                    <Button size="sm" className="gap-1 flex-shrink-0" onClick={() => setKycModalOpen(true)}>
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                        Resubmit KYC
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Rejected Properties */}
+                            {rejectedProperties.map((prop) => (
+                                <div key={prop.property_id} className="flex items-start justify-between gap-4 p-4 rounded-lg border border-destructive/30 bg-background">
+                                    <div className="flex items-start gap-3">
+                                        <Building2 className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <h4 className="font-semibold text-primary">{prop.title}</h4>
+                                            <p className="text-xs text-muted-foreground">{prop.location}</p>
+                                            {prop.rejection_reason && (
+                                                <p className="text-sm text-muted-foreground mt-1">
+                                                    <span className="font-medium text-destructive">Reason: </span>{prop.rejection_reason}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="outline" className="gap-1 flex-shrink-0 border-destructive/40 text-destructive hover:bg-destructive hover:text-white" onClick={() => setResubmitPropertyId(prop.property_id)}>
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                        Resubmit
+                                    </Button>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card className="mb-6">
                     <CardHeader>
@@ -580,7 +682,7 @@ export default function OwnerDashboard() {
                     <CardContent>
                         <div className="space-y-4">
                             {/* KYC Item */}
-                            {kycStatus !== 'approved' && (
+                            {kycStatus && kycStatus !== 'approved' && (
                                 <div
                                     className={`flex items-start gap-4 p-4 border rounded-lg transition-colors cursor-pointer hover:bg-accent/5`}
                                     onClick={() => (kycStatus === 'not_submitted' || kycStatus === 'rejected') && setKycModalOpen(true)}
@@ -943,6 +1045,7 @@ export default function OwnerDashboard() {
                 <KYCWizard
                     open={kycModalOpen}
                     onOpenChange={setKycModalOpen}
+                    existingKyc={kycStatus === 'rejected' ? existingKyc : null}
                     onSuccess={fetchDashboardData}
                 />
 
@@ -1023,6 +1126,52 @@ export default function OwnerDashboard() {
 
                 <Chatbot />
             </div>
+
+            {/* Property Resubmit Modal */}
+            <Dialog open={resubmitPropertyId !== null} onOpenChange={(o) => { if (!o) { setResubmitPropertyId(null); setResubmitFiles({ images: [], docs: [] }); } }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <UploadCloud className="h-5 w-5" />
+                            Resubmit Property for Approval
+                        </DialogTitle>
+                        <DialogDescription>
+                            Upload new or corrected documents. Existing documents will be replaced if you upload new ones. You can also resubmit without uploading to keep existing documents.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label>New Property Images (optional)</Label>
+                            <input
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                onChange={(e) => setResubmitFiles(f => ({ ...f, images: Array.from(e.target.files || []) }))}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>New Legal Documents (optional)</Label>
+                            <input
+                                type="file"
+                                multiple
+                                accept=".pdf,.doc,.docx"
+                                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                onChange={(e) => setResubmitFiles(f => ({ ...f, docs: Array.from(e.target.files || []) }))}
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setResubmitPropertyId(null); setResubmitFiles({ images: [], docs: [] }); }}>Cancel</Button>
+                        <Button disabled={isResubmitting} onClick={() => handleResubmitProperty(resubmitPropertyId!)}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            {isResubmitting ? 'Submitting...' : 'Resubmit for Review'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

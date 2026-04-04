@@ -400,16 +400,41 @@ enum ComplianceStatus {
 }
 
 model AuditLog {
-  log_id      Int      @id @default(autoincrement())
-  user_id     Int?
-  action      String   @db.VarChar(256)
-  details     String?  @db.Text
-  ip_address  String?  @db.VarChar(50)
-  timestamp   DateTime @default(now())
+  log_id      Int            @id @default(autoincrement())
+  user_id     Int?           // The regulator/admin who performed the action
+  actorRole   ActorRole?
+  module      AuditModule?   // KYC | PROPERTY (nullable for backward compat)
+  action      AuditAction    @default(SUBMITTED) // APPROVED | REJECTED | etc.
+  targetId    Int?           // user_id for KYC, property_id for PROPERTY
+  targetName  String?        @db.VarChar(256) // snapshot of name at time of action
+  details     Json?          // JSON: { reason?, comments? }
+  ip_address  String?        @db.VarChar(50)
+  timestamp   DateTime       @default(now())
 
-  user        User?    @relation(fields: [user_id], references: [user_id])
+  user        User?          @relation(fields: [user_id], references: [user_id])
 
   @@map("audit_logs")
+  @@index([module])
+  @@index([action])
+  @@index([timestamp])
+  @@index([targetId])
+}
+
+enum AuditModule {
+  KYC
+  PROPERTY
+}
+
+enum AuditAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  UPDATED
+}
+
+enum ActorRole {
+  ADMIN
+  REGULATOR
 }
 
 model Notification {

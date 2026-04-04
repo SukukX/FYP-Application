@@ -18,7 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Shield, FileCheck, Users, AlertCircle, CheckCircle, XCircle } from "lucide-react";
+import { Shield, FileCheck, Users, AlertCircle, CheckCircle, XCircle, ClipboardList, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
@@ -27,10 +28,15 @@ import { getFileUrl } from "@/lib/utils";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 
+// Module-level cache — survives page navigation, clears when backend is hot-reloaded
+let _dashboardCache: { data: any; ts: number } | null = null;
+const CACHE_TTL_MS = 60_000; // 60 seconds
+
 export default function RegulatorDashboard() {
     const [kycQueue, setKycQueue] = useState<any[]>([]);
     const [listingQueue, setListingQueue] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const [reviewType, setReviewType] = useState<"kyc" | "listing">("kyc");
     const [reviewComments, setReviewComments] = useState("");
@@ -45,12 +51,21 @@ export default function RegulatorDashboard() {
     });
 
     useEffect(() => {
+        // Serve cached data instantly, then refresh in background
+        if (_dashboardCache && Date.now() - _dashboardCache.ts < CACHE_TTL_MS) {
+            const { kycQueue, listingQueue, stats } = _dashboardCache.data;
+            setKycQueue(kycQueue);
+            setListingQueue(listingQueue || []);
+            setStats(stats);
+            setIsLoading(false);
+        }
         fetchDashboardData();
     }, []);
 
     const fetchDashboardData = async () => {
         try {
             const res = await api.get("/dashboard/regulator");
+            _dashboardCache = { data: res.data, ts: Date.now() }; // Update cache
             setKycQueue(res.data.kycQueue);
             setListingQueue(res.data.listingQueue || []);
             setStats(res.data.stats);
@@ -73,6 +88,8 @@ export default function RegulatorDashboard() {
      * - Listing: Updates Property status to 'approved' + uploads optional Proof of Verification.
      */
     const handleApprove = async (item: any, type: "kyc" | "listing") => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             if (type === "kyc") {
                 await api.post("/kyc/approve", { userId: item.user_id });
@@ -97,7 +114,8 @@ export default function RegulatorDashboard() {
             setReviewModalOpen(false);
             setReviewComments("");
             setProofFile(null);
-            fetchDashboardData(); // Refresh data
+            _dashboardCache = null; // Invalidate cache after state change
+            fetchDashboardData();
         } catch (error: any) {
             console.error("Handle Approve Error:", error);
             toast({
@@ -105,6 +123,8 @@ export default function RegulatorDashboard() {
                 description: error.response?.data?.message || "Failed to approve",
                 variant: "destructive",
             });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -117,7 +137,8 @@ export default function RegulatorDashboard() {
             });
             return;
         }
-
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             if (type === "kyc") {
                 await api.post("/kyc/reject", { userId: item.user_id, comments: reviewComments });
@@ -144,13 +165,16 @@ export default function RegulatorDashboard() {
             setReviewModalOpen(false);
             setReviewComments("");
             setProofFile(null);
-            fetchDashboardData(); // Refresh data
+            _dashboardCache = null; // Invalidate cache after state change
+            fetchDashboardData();
         } catch (error: any) {
             toast({
                 title: "Action Failed",
                 description: error.response?.data?.message || "Failed to reject",
                 variant: "destructive",
             });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -245,7 +269,14 @@ export default function RegulatorDashboard() {
                                 <TableBody>
                                     {kycQueue.map((user) => (
                                         <TableRow key={user.user_id}>
-                                            <TableCell className="font-medium">{user.user?.name}</TableCell>
+                                            <TableCell className="font-medium">
+                                                <div>{user.user?.name}</div>
+                                                {user.is_resubmission && (
+                                                    <Badge variant="outline" className="text-xs mt-1 border-orange-400 text-orange-500 gap-1">
+                                                        <RefreshCw className="h-2.5 w-2.5" /> Resubmission
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
                                             <TableCell>{user.user?.email}</TableCell>
                                             <TableCell>{user.cnic_number}</TableCell>
                                             <TableCell>
@@ -307,7 +338,17 @@ export default function RegulatorDashboard() {
                                 <TableBody>
                                     {listingQueue.map((listing) => (
                                         <TableRow key={listing.property_id}>
-                                            <TableCell className="font-medium">{listing.title}</TableCell>
+                                            <TableCell className="font-medium">
+                                                <div>{listing.title}</div>
+                                                {listing.is_resubmission && (
+                                                    <Badge variant="outline" className="text-xs mt-1 border-orange-400 text-orange-500 gap-1">
+                                                        <RefreshCw className="h-2.5 w-2.5" /> Resubmission
+                                                    </Badge>
+                                                )}
+                                                {listing.rejection_reason && (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Prev. reason: {listing.rejection_reason}</p>
+                                                )}
+                                            </TableCell>
                                             <TableCell>{listing.owner?.name}</TableCell>
                                             <TableCell>PKR {(listing.valuation / 1000000).toFixed(1)}M</TableCell>
                                             <TableCell>{listing.sukuks?.[0]?.total_tokens || "N/A"}</TableCell>
@@ -329,6 +370,29 @@ export default function RegulatorDashboard() {
                                 </TableBody>
                             </Table>
                         )}
+                    </CardContent>
+                </Card>
+
+                {/* Audit Logs Card */}
+                <Card className="mb-6 hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center">
+                                    <ClipboardList className="h-6 w-6 text-accent" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-lg">Audit Logs</h3>
+                                    <p className="text-sm text-muted-foreground">Full history of all KYC and property verification decisions</p>
+                                </div>
+                            </div>
+                            <Link href="/dashboard/regulator/logs">
+                                <Button variant="outline" className="gap-2">
+                                    <ClipboardList className="h-4 w-4" />
+                                    View Logs
+                                </Button>
+                            </Link>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -525,16 +589,18 @@ export default function RegulatorDashboard() {
                     <DialogFooter className="flex justify-between">
                         <Button
                             variant="destructive"
+                            disabled={isSubmitting}
                             onClick={() => handleReject(selectedItem, reviewType)}
                         >
                             <XCircle className="mr-2 h-4 w-4" />
                             Reject
                         </Button>
                         <Button
+                            disabled={isSubmitting}
                             onClick={() => handleApprove(selectedItem, reviewType)}
                         >
                             <CheckCircle className="mr-2 h-4 w-4" />
-                            Approve
+                            {isSubmitting ? "Processing..." : "Approve"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

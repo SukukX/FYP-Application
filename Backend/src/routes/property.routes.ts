@@ -28,7 +28,7 @@ const router = Router();
 // ==========================================
 router.post("/", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), createProperty);
 router.post("/:id/documents", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), uploadDocuments);
-router.post("/:id/submit", authenticate, authorize(["owner"]), submitForVerification);
+router.post("/:id/submit", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), submitForVerification);
 router.patch("/:id/status", authenticate, authorize(["owner"]), updateListingStatus);
 router.patch("/:id/supply", authenticate, authorize(["owner"]), updateTokenSupply);
 router.delete("/:id", authenticate, authorize(["owner"]), deleteProperty);
