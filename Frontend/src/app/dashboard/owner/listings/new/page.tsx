@@ -123,7 +123,7 @@ export default function CreateListing() {
                     : "Your property has been submitted for regulator verification.",
             });
 
-            setTimeout(() => router.push("/dashboard/owner"), 1500);
+            setTimeout(() => router.push("/dashboard/listing/new/owner"), 1500);
         } catch (error: any) {
             console.error("Submission error:", error);
             toast({

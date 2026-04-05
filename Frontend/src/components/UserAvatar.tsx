@@ -23,7 +23,7 @@ export const UserAvatar = () => {
   };
 
   const getDashboardPath = () => {
-    return `/dashboard/${user.role}`;
+    return `/dashboard`;
   };
 
   return (

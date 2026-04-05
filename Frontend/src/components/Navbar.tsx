@@ -25,6 +25,9 @@ export const Navbar = () => {
           <Link href="/compliance" className="text-sm font-medium text-foreground hover:text-accent transition-colors">
             Compliance
           </Link>
+          <Link href="/exchange" className="text-sm font-medium hover:text-primary transition-colors">
+            Exchange
+          </Link>
           <Link href="/terms" className="text-sm font-medium text-foreground hover:text-accent transition-colors">
             Terms
           </Link>

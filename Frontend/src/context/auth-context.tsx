@@ -61,10 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(userData);
 
         // Redirect based on role
-        if (userData.role === 'investor') {
-            router.push("/dashboard/investor");
-        } else if (userData.role === 'owner') {
-            router.push("/dashboard/owner");
+        if (userData.role === 'user') {
+            router.push("/dashboard");
         } else if (userData.role === 'regulator') {
             router.push("/dashboard/regulator");
         } else {
