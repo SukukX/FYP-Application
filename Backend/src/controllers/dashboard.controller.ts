@@ -1,6 +1,8 @@
 import { Response } from "express";
 import { PrismaClient, KYCStatus } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { ethers } from "ethers";
+import { provider } from "../config/blockchain";
 
 const prisma = new PrismaClient();
 
@@ -212,6 +214,16 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         // ==========================================
         // 4. Send the Unified Response
         // ==========================================
+        let liveWalletBalance = 0;
+        if (wallet?.wallet_address) {
+            try {
+                const balance = await provider.getBalance(wallet.wallet_address);
+                liveWalletBalance = parseFloat(ethers.formatEther(balance));
+            } catch (err) {
+                console.error("Failed to fetch wallet balance via ethers:", err);
+            }
+        }
+
         res.json({
             role: "user", // The new unified role
             summary: {
@@ -230,6 +242,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                     face_scan: kycRecord.face_scan,
                 } : null,
                 walletAddress: wallet?.wallet_address || null,
+                walletBalance: liveWalletBalance,
                 mfaEnabled
             },
             ownerData: {
