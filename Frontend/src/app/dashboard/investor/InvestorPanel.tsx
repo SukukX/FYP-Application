@@ -1,13 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Wallet, Building2, Shield, ArrowRightLeft, Loader2 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { TrendingUp, Wallet, Building2, Shield, ArrowRightLeft, Loader2, Clock, XCircle, RefreshCw, ChevronRight } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip as PieTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as AreaTooltip } from "recharts";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
@@ -15,26 +15,49 @@ import { KYCWizard } from "@/components/KYCWizard";
 
 export default function InvestorPanel({ investorData, commonData, onRefresh }: { investorData: any, commonData: any, onRefresh: () => void }) {
     
-    // 1. READ DIRECTLY FROM PROPS
     const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0 };
     const portfolio = investorData?.portfolio || [];
-    const investments = investorData?.investments || []; // Array of detailed investments for the list
+    const investments = investorData?.investments || [];
+    const holdings = investorData?.holdings || [];
     
     const kycStatus = commonData?.kycStatus || 'not_submitted';
+    const kycRejectionReason = commonData?.kycRejectionReason || null;
+    const existingKyc = commonData?.existingKyc || null;
     const connectedWallet = commonData?.walletAddress || null;
 
-    // 2. INTERACTIVE UI STATES
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [walletAddress, setWalletAddress] = useState("");
     
-    // 3. SECONDARY MARKET UI STATES
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
     const [askingPrice, setAskingPrice] = useState("");
     const [isListing, setIsListing] = useState(false);
 
     const { toast } = useToast();
+
+    const growthData = useMemo(() => {
+        if (holdings.length === 0) return [];
+        const data = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const targetDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+            const valueAtMonth = holdings.reduce((sum: number, h: any) => {
+                const purchaseDate = new Date(h.purchase_date);
+                if (purchaseDate <= targetDate) {
+                    return sum + (h.current_value || 0); 
+                }
+                return sum;
+            }, 0);
+            data.push({
+                month: targetDate.toLocaleDateString("en-US", { month: "short" }),
+                value: valueAtMonth
+            });
+        }
+        return data;
+    }, [holdings]);
+
+    const recentHoldings = [...holdings].sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
 
     const handleWalletConnect = async () => {
         if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
@@ -82,7 +105,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
     };
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in mb-12">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-primary mb-2">Investment Portfolio</h1>
@@ -128,72 +151,118 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 </Card>
             </div>
 
-            {/* Portfolio Distribution */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5" />
-                        Portfolio Distribution
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-col md:flex-row items-center gap-8">
-                        <div className="w-full md:w-1/2 h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={portfolio.length > 0 ? portfolio : [{ name: "No Data", value: 100, color: "#e5e7eb" }]}
-                                        cx="50%"
-                                        cy="50%"
-                                        labelLine={false}
-                                        label={portfolio.length > 0 ? (entry: any) => `${entry.name} ${(entry.percent * 100).toFixed(0)}%` : undefined}
-                                        outerRadius={100}
-                                        fill="#8884d8"
-                                        dataKey="value"
-                                    >
-                                        {portfolio.length > 0 ? portfolio.map((entry: any, index: number) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        )) : (
-                                            <Cell fill="#e5e7eb" />
-                                        )}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
+            {/* Area Chart & Recent Additions - Restored from User's Backup */}
+            <div className="grid lg:grid-cols-3 gap-6">
+                <Card className="lg:col-span-2 overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-muted/20">
+                        <div>
+                            <CardTitle className="text-base flex items-center gap-2 text-primary">
+                                <TrendingUp className="h-4 w-4" />
+                                Portfolio Growth
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground mt-1">Estimated 6-month value trend</p>
                         </div>
-                        <div className="w-full md:w-1/2 space-y-4">
-                            {portfolio.length === 0 ? (
-                                <>
-                                    <p className="text-muted-foreground">
-                                        Your portfolio is currently empty. Start investing in tokenized real estate to see your distribution here.
-                                    </p>
-                                    <Link href="/marketplace">
-                                        <Button className="w-full">
-                                            <Building2 className="mr-2 h-4 w-4" />
-                                            Browse Marketplace
-                                        </Button>
-                                    </Link>
-                                </>
-                            ) : (
-                                <>
-                                    <p className="text-muted-foreground">
-                                        Your investments are spread across {stats.propertiesOwned} properties. Diversifying your portfolio across different property types reduces risk.
-                                    </p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+                        <Link href="/dashboard/portfolio">
+                            <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs px-2">
+                                Detailed Analytics <ChevronRight className="h-3 w-3" />
+                            </Button>
+                        </Link>
+                    </CardHeader>
+                    <CardContent>
+                        {holdings.length === 0 ? (
+                            <div className="h-[280px] flex items-center justify-center flex-col text-center">
+                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                                    <TrendingUp className="h-6 w-6 text-muted-foreground/40" />
+                                </div>
+                                <p className="font-medium text-sm text-primary mb-1">No performance data</p>
+                                <p className="text-xs text-muted-foreground max-w-xs mb-4">You need to have active investments to see performance charts.</p>
+                                <Link href="/marketplace">
+                                    <Button size="sm" variant="outline" className="h-8 text-xs">Browse Properties</Button>
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="h-[320px] w-full pt-4 pr-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={growthData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
+                                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} dy={15} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))", fontWeight: 500 }} tickFormatter={(val) => val >= 1000000 ? `PKR ${(val/1000000).toFixed(1)}M` : `PKR ${(val/1000).toFixed(0)}k`} width={90} tickMargin={10} />
+                                        <AreaTooltip formatter={(val: number) => [`PKR ${val.toLocaleString()}`, "Portfolio Value"]} contentStyle={{ borderRadius: "10px", fontSize: "13px", border: "1px solid hsl(var(--border))" }} itemStyle={{ fontWeight: 600, color: "hsl(var(--primary))" }} />
+                                        <Area type="linear" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" dot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--background))", stroke: "hsl(var(--primary))" }} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
-            {/* NEW: Active Investments List & Secondary Market Triggers */}
+                {/* Recent Additions */}
+                <Card>
+                    <CardHeader className="pb-4 border-b border-muted/20">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-primary" />
+                            Recent Activity
+                        </CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">Your latest property investments</p>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                        {recentHoldings.length === 0 ? (
+                            <div className="h-[240px] flex items-center justify-center flex-col text-center">
+                                <p className="text-sm text-muted-foreground mb-4">No recent activity.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {recentHoldings.slice(0, 4).map((h: any) => (
+                                    <div key={h.investment_id} className="flex gap-3">
+                                        <div className="mt-1 bg-accent/10 p-1.5 rounded-full h-fit flex-shrink-0">
+                                            <Building2 className="h-3.5 w-3.5 text-accent" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start mb-0.5">
+                                                <p className="text-sm font-medium text-primary truncate pr-2">{h.property_title}</p>
+                                                <span className="text-xs font-semibold whitespace-nowrap text-verified">+{h.tokens_owned} tk</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <p className="text-xs text-muted-foreground">
+                                                    {new Date(h.purchase_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                                </p>
+                                                <Link href={`/marketplace/${h.property_id}`}>
+                                                    <button className="text-xs text-accent hover:underline flex items-center gap-0.5">
+                                                        View Property
+                                                    </button>
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {recentHoldings.length > 4 && (
+                                    <div className="pt-2 text-center border-t border-border/50">
+                                        <Link href="/dashboard/portfolio">
+                                            <button className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                                                View {recentHoldings.length - 4} more older investments
+                                            </button>
+                                        </Link>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Active Investments List & Secondary Market Triggers - Preserved from unified branch */}
             {investments && investments.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Building2 className="h-5 w-5" />
-                            Your Active Investments
+                            Your Active Investments (Exchange)
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -218,7 +287,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                             className="border-primary/20 hover:border-primary/50"
                                             onClick={() => {
                                                 setSelectedInvestment(inv);
-                                                setAskingPrice(""); // reset input
+                                                setAskingPrice("");
                                                 setSellModalOpen(true);
                                             }}
                                         >
@@ -233,16 +302,16 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 </Card>
             )}
 
+            {/* Getting Started - Preserving rich UI from HEAD */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Wallet className="h-5 w-5" />
-                        Getting Started
+                        Getting Started Checklist
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {/* KYC Tile Logic */}
                         {kycStatus === 'not_submitted' && (
                             <div className="flex items-start gap-4 p-4 border rounded-lg">
                                 <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
@@ -250,12 +319,8 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                 </div>
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-primary mb-1">Complete KYC Verification</h3>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Verify your identity to unlock buying and trading capabilities.
-                                    </p>
-                                    <Button variant="outline" size="sm" onClick={() => setKycModalOpen(true)}>
-                                        Start Verification
-                                    </Button>
+                                    <p className="text-sm text-muted-foreground mb-2">Verify your identity to unlock buying and trading capabilities.</p>
+                                    <Button variant="outline" size="sm" onClick={() => setKycModalOpen(true)}>Start Verification</Button>
                                 </div>
                             </div>
                         )}
@@ -270,9 +335,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                         <h3 className="font-semibold text-primary mb-1">Verification Pending</h3>
                                         <Badge variant="outline" className="border-yellow-500 text-yellow-600">Under Review</Badge>
                                     </div>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Your documents have been submitted and are currently being reviewed by our compliance team.
-                                    </p>
+                                    <p className="text-sm text-muted-foreground mb-2">Your documents have been submitted and are under review.</p>
                                 </div>
                             </div>
                         )}
@@ -280,21 +343,22 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                         {kycStatus === 'rejected' && (
                             <div className="flex items-start gap-4 p-4 border rounded-lg bg-destructive/5 border-destructive/20">
                                 <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                                    <Shield className="h-5 w-5 text-destructive" />
+                                    <XCircle className="h-5 w-5 text-destructive" />
                                 </div>
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-destructive mb-1">Verification Rejected</h3>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        There was an issue with your submission. Please prevent common errors like blurry images and try again.
-                                    </p>
-                                    <Button variant="outline" size="sm" className="border-destructive/50 hover:bg-destructive/10 text-destructive" onClick={() => setKycModalOpen(true)}>
-                                        Resubmit Documents
+                                    {kycRejectionReason && (
+                                        <p className="text-sm text-destructive/80 mb-1 font-medium">Reason: {kycRejectionReason}</p>
+                                    )}
+                                    <p className="text-sm text-muted-foreground mb-2">Your previous documents are pre-loaded. Upload new ones only where needed.</p>
+                                    <Button variant="outline" size="sm" className="gap-1 border-destructive/50 hover:bg-destructive/10 text-destructive" onClick={() => setKycModalOpen(true)}>
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                        Resubmit KYC
                                     </Button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Wallet Tile */}
                         <div className="flex items-start gap-4 p-4 border rounded-lg">
                             <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
                                 <Wallet className="h-5 w-5 text-accent" />
@@ -302,155 +366,88 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                             <div className="flex-1">
                                 <h3 className="font-semibold text-primary mb-1">
                                     {connectedWallet ? "Wallet Connected" : "Connect Your Wallet"}
-                                </h3>
+                               </h3>
                                 <p className="text-sm text-muted-foreground mb-2">
-                                    {connectedWallet
-                                        ? `Linked: ${connectedWallet.substring(0, 6)}...${connectedWallet.substring(connectedWallet.length - 4)}`
-                                        : "Link your Ethereum wallet to receive and manage security tokens."}
+                                    {connectedWallet ? `Linked: ${connectedWallet.substring(0, 6)}...${connectedWallet.substring(connectedWallet.length - 4)}` : "Link your Ethereum wallet to receive proceeds."}
                                 </p>
-
                                 {connectedWallet ? (
                                     <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" className="border-green-500 text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/20" disabled>
-                                            Active
-                                        </Button>
-                                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={handleDisconnectWallet}>
-                                            Disconnect
-                                        </Button>
+                                        <Button variant="outline" size="sm" className="border-green-500 text-green-600 bg-green-50" disabled>Active</Button>
+                                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={handleDisconnectWallet}>Disconnect</Button>
                                     </div>
                                 ) : (
-                                    <Button variant="outline" size="sm" onClick={() => setWalletModalOpen(true)}>
-                                        Connect Wallet
-                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => setWalletModalOpen(true)}>Connect Wallet</Button>
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex items-start gap-4 p-4 border rounded-lg">
-                            <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                <Building2 className="h-5 w-5 text-accent" />
+                        {investments.length === 0 && (
+                            <div className="flex items-start gap-4 p-4 border rounded-lg">
+                                <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                    <Building2 className="h-5 w-5 text-accent" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-semibold text-primary mb-1">Browse Marketplace</h3>
+                                    <p className="text-sm text-muted-foreground mb-2">Explore verified property listings and start building your portfolio.</p>
+                                    <Link href="/marketplace">
+                                        <Button variant="outline" size="sm">View Properties</Button>
+                                    </Link>
+                                </div>
                             </div>
-                            <div className="flex-1">
-                                <h3 className="font-semibold text-primary mb-1">Browse Marketplace</h3>
-                                <p className="text-sm text-muted-foreground mb-2">
-                                    Explore verified property listings and start building your portfolio.
-                                </p>
-                                <Link href="/marketplace">
-                                    <Button variant="outline" size="sm">
-                                        View Properties
-                                    </Button>
-                                </Link>
-                            </div>
-                        </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
 
-            {/* KYC Wizard */}
-            <KYCWizard
-                open={kycModalOpen}
-                onOpenChange={setKycModalOpen}
-                onSuccess={() => {
-                    onRefresh();
-                    toast({
-                        title: "Verification Submitted",
-                        description: "Your KYC documents have been submitted successfully.",
-                    });
-                }}
-            />
+            {/* Modals */}
+            <KYCWizard open={kycModalOpen} onOpenChange={setKycModalOpen} existingKyc={kycStatus === 'rejected' ? existingKyc : null} onSuccess={() => { onRefresh(); toast({ title: "Submitted", description: "Your KYC was submitted successfully." }); }} />
 
-            {/* Wallet Modal */}
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Connect Your Wallet</DialogTitle>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Connect Your Wallet</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="walletAddress">Ethereum Wallet Address</Label>
-                            <Input
-                                id="walletAddress"
-                                value={walletAddress}
-                                onChange={(e) => setWalletAddress(e.target.value)}
-                                placeholder="0x..."
-                            />
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                            Enter your Ethereum wallet address to receive and manage your security tokens.
-                        </p>
+                        <Label htmlFor="walletAddress">Ethereum Wallet Address</Label>
+                        <Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." />
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setWalletModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleWalletConnect}>
-                            Connect Wallet
-                        </Button>
+                        <Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleWalletConnect}>Connect</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* NEW: SELL TOKENS MODAL */}
+            {/* SELL TOKENS MODAL */}
             <Dialog open={sellModalOpen} onOpenChange={setSellModalOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>List on Secondary Market</DialogTitle>
-                        <DialogDescription>
-                            Create a P2P listing to sell your tokens. You are creating a fixed bundle of <strong>{selectedInvestment?.tokens_owned} tokens</strong>.
-                        </DialogDescription>
+                        <DialogDescription>Create a P2P listing to sell your tokens. You are creating a fixed bundle of <strong>{selectedInvestment?.tokens_owned} tokens</strong>.</DialogDescription>
                     </DialogHeader>
-                    
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="askingPrice">Total Asking Price for Bundle (PKR)</Label>
-                            <Input 
-                                id="askingPrice" 
-                                type="number" 
-                                placeholder="e.g. 500000" 
-                                value={askingPrice}
-                                onChange={(e) => setAskingPrice(e.target.value)}
-                            />
+                            <Input id="askingPrice" type="number" placeholder="e.g. 500000" value={askingPrice} onChange={(e) => setAskingPrice(e.target.value)} />
                             {askingPrice && selectedInvestment?.tokens_owned > 0 && (
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Implied price per token: PKR {(parseFloat(askingPrice) / selectedInvestment.tokens_owned).toFixed(2)}
-                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">Implied price per token: PKR {(parseFloat(askingPrice) / selectedInvestment.tokens_owned).toFixed(2)}</p>
                             )}
                         </div>
                     </div>
-
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setSellModalOpen(false)} disabled={isListing}>
-                            Cancel
-                        </Button>
-                        <Button 
-                            disabled={isListing || !askingPrice || parseFloat(askingPrice) <= 0} 
-                            onClick={async () => {
-                                setIsListing(true);
-                                try {
-                                    await api.post("/exchange/listings", {
-                                        sukuk_id: selectedInvestment.sukuk_id,
-                                        token_amount: selectedInvestment.tokens_owned,
-                                        total_asking_price: parseFloat(askingPrice)
-                                    });
-                                    toast({ title: "Success", description: "Tokens listed on the exchange!" });
-                                    setSellModalOpen(false);
-                                    onRefresh(); 
-                                } catch (error: any) {
-                                    toast({ 
-                                        title: "Error", 
-                                        description: error.response?.data?.message || "Failed to list tokens.", 
-                                        variant: "destructive" 
-                                    });
-                                } finally {
-                                    setIsListing(false);
-                                }
-                            }}
-                        >
-                            {isListing ? (
-                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Listing...</>
-                            ) : (
-                                "Confirm Listing"
-                            )}
+                        <Button variant="outline" onClick={() => setSellModalOpen(false)} disabled={isListing}>Cancel</Button>
+                        <Button disabled={isListing || !askingPrice || parseFloat(askingPrice) <= 0} onClick={async () => {
+                            setIsListing(true);
+                            try {
+                                await api.post("/exchange/listings", { sukuk_id: selectedInvestment.sukuk_id, token_amount: selectedInvestment.tokens_owned, total_asking_price: parseFloat(askingPrice) });
+                                toast({ title: "Success", description: "Tokens listed!" });
+                                setSellModalOpen(false);
+                                onRefresh(); 
+                            } catch (error: any) {
+                                toast({ title: "Error", description: error.response?.data?.message || "Failed to list.", variant: "destructive" });
+                            } finally {
+                                setIsListing(false);
+                            }
+                        }}>
+                            {isListing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Listing...</> : "Confirm Listing"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

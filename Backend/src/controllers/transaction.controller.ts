@@ -29,6 +29,11 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: `Only ${sukuk.available_tokens} tokens available` });
         }
 
+        // 2b. Prevent owner from buying their own property's tokens
+        if (property.owner_id === investorId) {
+            return res.status(403).json({ message: "You cannot purchase tokens from your own property listing." });
+        }
+
         // 3. Get Wallets
         const investorWallet = await prisma.wallet.findFirst({
             where: { user_id: investorId, is_primary: true }

@@ -8,31 +8,41 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 export class AuthService {
     async register(data: any) {
-        // We removed 'role' from the destructuring to prevent injection
-        const { name, email, password, phone_number, cnic } = data;
+        const { name, email, password, phone_number, cnic, role, dob } = data;
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
-            throw new Error("User already exists");
+            throw new Error("User already exists with this email.");
         }
 
-        if (cnic) {
-            const existingCnic = await prisma.user.findUnique({ where: { cnic } });
+        const validCnic = cnic?.trim() || null;
+        if (validCnic) {
+            const existingCnic = await prisma.user.findUnique({ where: { cnic: validCnic } });
             if (existingCnic) {
-                throw new Error("CNIC already exists");
+                throw new Error("User already exists with this CNIC.");
             }
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
+        const validRole = role === "regulator" ? Role.regulator : Role.user;
+        
+        let validDob = null;
+        if (dob) {
+            const parsedDob = new Date(dob);
+            if (!isNaN(parsedDob.getTime())) {
+                validDob = parsedDob;
+            }
+        }
 
         const user = await prisma.user.create({
             data: {
                 name,
                 email,
                 password: hashedPassword,
-                role: "user", // FIXED: Hardcode unified role to prevent crashes and secure the endpoint
-                phone_number,
-                cnic, 
+                role: validRole,
+                phone_number: phone_number?.trim() || null,
+                cnic: validCnic,
+                dob: validDob,
             },
         });
 

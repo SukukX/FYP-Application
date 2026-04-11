@@ -141,7 +141,7 @@ export default function PropertyDetail() {
      * [ACTION] Buy Tokens
      * Guard Rails:
      * - Auth Check: User must be logged in.
-     * - Role Check: User must be an Investor.
+     * - Owner Check: Cannot buy tokens from your own listing.
      * - KYC Check: User must be Verified.
      * - Stock Check: Cannot buy more than available tokens.
      */
@@ -149,17 +149,17 @@ export default function PropertyDetail() {
         if (!currentUser) {
             toast({
                 title: "Authentication Required",
-                description: "Please log in as an Investor to purchase tokens.",
+                description: "Please log in to purchase tokens.",
                 variant: "destructive",
             });
             setBuyModalOpen(false);
             return;
         }
 
-        if (currentUser.role !== "investor") {
+        if (listing.owner_id === currentUser.user_id) {
             toast({
                 title: "Access Denied",
-                description: "Only Investors can purchase tokens.",
+                description: "You cannot purchase tokens from your own property listing.",
                 variant: "destructive",
             });
             setBuyModalOpen(false);

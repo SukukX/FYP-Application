@@ -4,7 +4,7 @@
  * ---------------
  * Purpose: New User Onboarding.
  * Features:
- * - Role Selection (Investor, Owner, Regulator).
+ * - Role Selection (User, Regulator).
  * - Registration Form (Conditional on Role - currently shared).
  * - API Integration (POST /api/auth/register).
  */
@@ -17,12 +17,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
-import { Building2, User, Shield } from "lucide-react";
+import { Users, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 
-type UserRole = "investor" | "owner" | "regulator";
+type UserRole = "user" | "regulator";
 
 export default function Register() {
     const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
@@ -85,6 +85,7 @@ export default function Register() {
                 role: selectedRole,
                 phone_number: formData.phone_number,
                 cnic: formData.cnic,
+                dob: formData.dob,
             });
             const { token, user } = res.data;
 
@@ -112,30 +113,30 @@ export default function Register() {
             <div className="min-h-screen bg-background">
                 <Navbar />
                 <div className="container mx-auto px-4 py-16">
-                    <div className="max-w-4xl mx-auto">
+                    <div className="max-w-3xl mx-auto">
                         <div className="text-center mb-12 animate-fade-in">
                             <h1 className="text-4xl font-bold text-primary mb-4">Create Your Account</h1>
                             <p className="text-muted-foreground text-lg">Select your account type to get started</p>
                         </div>
 
-                        <div className="grid md:grid-cols-3 gap-6">
+                        <div className="grid md:grid-cols-2 gap-6">
                             <Card
                                 className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
-                                onClick={() => handleRoleSelect("investor")}
+                                onClick={() => handleRoleSelect("user")}
                             >
                                 <CardHeader className="text-center pb-4">
                                     <div className="mx-auto h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                                        <User className="h-8 w-8 text-accent" />
+                                        <Users className="h-8 w-8 text-accent" />
                                     </div>
-                                    <CardTitle className="text-xl">Investor</CardTitle>
-                                    <CardDescription>Buy and trade property tokens</CardDescription>
+                                    <CardTitle className="text-xl">Investor / Property Owner</CardTitle>
+                                    <CardDescription>Join the real estate ecosystem</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <ul className="text-sm text-muted-foreground space-y-2">
-                                        <li>• Purchase security tokens</li>
-                                        <li>• Build your portfolio</li>
-                                        <li>• Trade on marketplace</li>
-                                        <li>• Track investments</li>
+                                        <li>• Tokenize and list your properties</li>
+                                        <li>• Purchase property tokens & earn yields</li>
+                                        <li>• Trade properties on the secondary market</li>
+                                        <li>• Access a unified portfolio dashboard</li>
                                     </ul>
                                 </CardContent>
                             </Card>
@@ -143,28 +144,6 @@ export default function Register() {
                             <Card
                                 className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
                                 style={{ animationDelay: "100ms" }}
-                                onClick={() => handleRoleSelect("owner")}
-                            >
-                                <CardHeader className="text-center pb-4">
-                                    <div className="mx-auto h-16 w-16 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                                        <Building2 className="h-8 w-8 text-accent" />
-                                    </div>
-                                    <CardTitle className="text-xl">Property Owner</CardTitle>
-                                    <CardDescription>Tokenize your real estate</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <ul className="text-sm text-muted-foreground space-y-2">
-                                        <li>• List properties</li>
-                                        <li>• Create token offerings</li>
-                                        <li>• Manage listings</li>
-                                        <li>• View sales analytics</li>
-                                    </ul>
-                                </CardContent>
-                            </Card>
-
-                            <Card
-                                className="cursor-pointer border-2 hover:border-accent hover:shadow-lg transition-all duration-300 animate-slide-up"
-                                style={{ animationDelay: "200ms" }}
                                 onClick={() => handleRoleSelect("regulator")}
                             >
                                 <CardHeader className="text-center pb-4">
@@ -177,9 +156,9 @@ export default function Register() {
                                 <CardContent>
                                     <ul className="text-sm text-muted-foreground space-y-2">
                                         <li>• Verify KYC documents</li>
-                                        <li>• Approve listings</li>
-                                        <li>• Manage compliance</li>
-                                        <li>• Audit trail access</li>
+                                        <li>• Approve or reject listings</li>
+                                        <li>• Manage compliance and limits</li>
+                                        <li>• Access platform audit trails</li>
                                     </ul>
                                 </CardContent>
                             </Card>
@@ -206,7 +185,7 @@ export default function Register() {
                 <div className="max-w-md mx-auto">
                     <Card className="animate-scale-in">
                         <CardHeader>
-                            <CardTitle className="text-2xl">Register as {selectedRole === "investor" ? "Investor" : selectedRole === "owner" ? "Property Owner" : "Regulator"}</CardTitle>
+                            <CardTitle className="text-2xl">Register as {selectedRole === "user" ? "Investor / Property Owner" : "Regulator"}</CardTitle>
                             <CardDescription>Create your account to get started</CardDescription>
                         </CardHeader>
                         <CardContent>
