@@ -27,14 +27,14 @@ router.post("/wallet", authenticate, addWallet);
 router.post(
     "/partition",
     authenticate,
-    authorize(["owner"]),
+    authorize(["user"]),
     createPartition
 );
 
 router.post(
     "/issue",
     authenticate,
-    authorize(["owner"]),
+    authorize(["user"]),
     issueTokens
 );
 
@@ -46,7 +46,7 @@ router.post(
 router.post(
     "/payout",
     authenticate,
-    authorize(["owner"]),
+    authorize(["user"]),
     distributeProfit
 );
 

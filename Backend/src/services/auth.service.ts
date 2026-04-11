@@ -1,4 +1,4 @@
-import { PrismaClient, User, Role } from "@prisma/client";
+import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import * as speakeasy from "speakeasy";
@@ -8,7 +8,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 export class AuthService {
     async register(data: any) {
-        const { name, email, password, role, phone_number, cnic } = data;
+        // We removed 'role' from the destructuring to prevent injection
+        const { name, email, password, phone_number, cnic } = data;
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -29,9 +30,9 @@ export class AuthService {
                 name,
                 email,
                 password: hashedPassword,
-                role: role as Role,
+                role: "user", // FIXED: Hardcode unified role to prevent crashes and secure the endpoint
                 phone_number,
-                cnic, // Assuming CNIC is provided at registration or handled later
+                cnic, 
             },
         });
 
@@ -41,27 +42,26 @@ export class AuthService {
     async login(data: any) {
         const { email, password, mfaCode } = data;
 
-        // Include mfa_setting in query to check status
-        const userMFA = await prisma.user.findUnique({
-            where: { email },
-            include: { mfa_setting: true }
-        });
-
+        // OPTIMIZATION: Combined MFA and KYC includes into a single database hit
         const user = await prisma.user.findUnique({
             where: { email },
-            include: { kyc_request: true }
+            include: { 
+                mfa_setting: true,
+                kyc_request: true 
+            }
         });
-        if (!userMFA) {
+
+        if (!user) {
             throw new Error("Invalid credentials");
         }
 
-        const isMatch = await bcrypt.compare(password, userMFA.password);
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             throw new Error("Invalid credentials");
         }
 
         // Check MFA
-        if (userMFA.mfa_setting?.is_enabled) {
+        if (user.mfa_setting?.is_enabled) {
             if (!mfaCode) {
                 // Signal controller that MFA is required
                 return { mfaRequired: true };
@@ -69,7 +69,7 @@ export class AuthService {
 
             // Verify Code
             const verified = speakeasy.totp.verify({
-                secret: userMFA.mfa_setting.secret!,
+                secret: user.mfa_setting.secret!,
                 encoding: "base32",
                 token: mfaCode,
                 window: 1 // Allow 30s slack
@@ -80,7 +80,7 @@ export class AuthService {
             }
         }
 
-        return this.generateToken(userMFA);
+        return this.generateToken(user);
     }
 
     private generateToken(user: any) {
@@ -100,6 +100,7 @@ export class AuthService {
             kycStatus: user.kyc_request?.status || "not_submitted"
         };
         delete userResponse.password; // Safety first
+        delete userResponse.mfa_setting; // Keep payload clean
 
         return { user: userResponse, token };
     }

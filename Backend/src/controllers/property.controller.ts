@@ -631,3 +631,84 @@ export const updateTokenSupply = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+
+
+/**
+ * [ACTION] Revalue Property (Appraiser/Regulator Only)
+ * Purpose: Allows a certified appraiser to update the total valuation of a property.
+ * Logic:
+ * - Calculates the new token price (New Valuation / Total Tokens).
+ * - Updates Property.valuation.
+ * - Updates Sukuk.token_price.
+ * - Logs the change in TokenPriceHistory for the frontend charts.
+ */
+export const revalueProperty = async (req: AuthRequest, res: Response) => {
+    try {
+        const propertyId = parseInt(req.params.id);
+        const { newValuation, remarks } = req.body;
+        const regulatorId = req.user?.user_id;
+
+        if (!regulatorId) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        if (!newValuation || isNaN(parseFloat(newValuation))) {
+            return res.status(400).json({ message: "A valid new valuation number is required." });
+        }
+
+        const property = await prisma.property.findUnique({
+            where: { property_id: propertyId },
+            include: { sukuks: true }
+        });
+
+        if (!property) return res.status(404).json({ message: "Property not found" });
+
+        const sukuk = property.sukuks[0];
+        if (!sukuk) return res.status(400).json({ message: "No Sukuk structure found for this property." });
+
+        const parsedValuation = parseFloat(newValuation);
+        
+        // The Math: New Token Price = New Valuation / Total Supply
+        const newTokenPrice = parsedValuation / sukuk.total_tokens;
+
+        // Execute Database Updates in a Transaction
+        await prisma.$transaction(async (tx) => {
+            // 1. Update the overall property valuation
+            await tx.property.update({
+                where: { property_id: propertyId },
+                data: { valuation: parsedValuation }
+            });
+
+            // 2. Update the active token price
+            await tx.sukuk.update({
+                where: { sukuk_id: sukuk.sukuk_id },
+                data: { token_price: newTokenPrice }
+            });
+
+            // 3. Log the history for Recharts (Frontend)
+            await tx.tokenPriceHistory.create({
+                data: {
+                    sukuk_id: sukuk.sukuk_id,
+                    old_price: sukuk.token_price,
+                    new_price: newTokenPrice,
+                    changed_by: regulatorId,
+                    change_reason: remarks || "Appraiser valuation update"
+                }
+            });
+        }, 
+        // THIS IS THE FIX: Increase the timeout limit to 20 seconds
+        {
+            timeout: 20000 
+        });
+
+        res.json({
+            message: "Property successfully revalued.",
+            newValuation: parsedValuation,
+            newTokenPrice: newTokenPrice
+        });
+
+    } catch (error: any) {
+        console.error("Revalue Property Error:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};

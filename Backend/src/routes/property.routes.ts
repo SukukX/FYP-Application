@@ -16,28 +16,30 @@ import {
     uploadPropertyDocs,
     updateListingStatus,
     deleteProperty,
-    updateTokenSupply
+    updateTokenSupply,
+    revalueProperty
 } from "../controllers/property.controller";
 import { authenticate, authorize } from "../middleware/auth.middleware";
 
 const router = Router();
 
 // ==========================================
-// Owner Routes (Protected: 'owner' role only)
-// Consumers: Frontend/src/app/dashboard/owner
+// Owner Routes (Protected: 'user' role)
+// Consumers: Frontend/src/app/dashboard/user (Owner features)
 // ==========================================
-router.post("/", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), createProperty);
-router.post("/:id/documents", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), uploadDocuments);
-router.post("/:id/submit", authenticate, authorize(["owner"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), submitForVerification);
-router.patch("/:id/status", authenticate, authorize(["owner"]), updateListingStatus);
-router.patch("/:id/supply", authenticate, authorize(["owner"]), updateTokenSupply);
-router.delete("/:id", authenticate, authorize(["owner"]), deleteProperty);
-router.get("/my", authenticate, authorize(["owner"]), getMyProperties);
+router.post("/", authenticate, authorize(["user"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), createProperty);
+router.post("/:id/documents", authenticate, authorize(["user"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), uploadDocuments);
+router.post("/:id/submit", authenticate, authorize(["user"]), uploadPropertyDocs.fields([{ name: 'images', maxCount: 10 }, { name: 'documents', maxCount: 5 }]), submitForVerification);
+router.patch("/:id/status", authenticate, authorize(["user"]), updateListingStatus);
+router.patch("/:id/supply", authenticate, authorize(["user"]), updateTokenSupply);
+router.delete("/:id", authenticate, authorize(["user"]), deleteProperty);
+router.get("/my", authenticate, authorize(["user"]), getMyProperties);
 
 // ==========================================
 // Regulator Routes (Protected: 'regulator', 'admin')
 // Consumers: Frontend/src/app/dashboard/regulator
 // ==========================================
 router.patch("/:id/verify", authenticate, authorize(["regulator", "admin"]), uploadPropertyDocs.single('proof'), verifyProperty);
+router.post("/:id/revalue", authenticate, authorize(["regulator", "admin"]), revalueProperty);
 
 export default router;

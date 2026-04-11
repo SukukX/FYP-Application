@@ -690,7 +690,7 @@ export default function ProfilePage() {
                                     </div>
 
                                     {user.kyc_request?.status !== 'approved' && (
-                                        <Button className="w-full" variant="default" onClick={() => router.push('/dashboard/investor')}>
+                                        <Button className="w-full" variant="default" onClick={() => router.push('/dashboard')}>
                                             Go to Dashboard to Submit KYC
                                         </Button>
                                     )}
