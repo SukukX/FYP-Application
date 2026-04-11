@@ -66,6 +66,7 @@ model Wallet {
   wallet_address String   @unique @db.VarChar(256)
   chain_id       Int?     // e.g. 1 for Mainnet, 11155111 for Sepolia
   is_primary     Boolean  @default(false)
+  balance        Decimal  @default(100000.00) @db.Decimal(15,2)
   created_at     DateTime @default(now())
 
   user           User     @relation(fields: [user_id], references: [user_id])

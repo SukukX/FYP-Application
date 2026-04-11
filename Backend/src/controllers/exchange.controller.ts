@@ -36,13 +36,13 @@ export const createListing = async (req: AuthRequest, res: Response) => {
         const activeListings = await prisma.secondaryListing.findMany({
             where: { seller_id: sellerId, sukuk_id: parseInt(sukuk_id), status: "open" }
         });
-        
+
         const lockedTokens = activeListings.reduce((sum, listing) => sum + listing.token_amount, 0);
         const availableTokensToList = investment.tokens_owned - lockedTokens;
 
         if (availableTokensToList < parseInt(token_amount)) {
-            return res.status(400).json({ 
-                message: `You only have ${availableTokensToList} unlocked tokens available to list.` 
+            return res.status(400).json({
+                message: `You only have ${availableTokensToList} unlocked tokens available to list.`
             });
         }
 
@@ -117,7 +117,7 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
         if (listing.seller_id === buyerId) {
             return res.status(400).json({ message: "You cannot buy your own listing." });
         }
-        
+
         const kyc = await prisma.kYCRequest.findUnique({ where: { user_id: buyerId } });
         if (kyc?.status !== "approved") {
             return res.status(403).json({ message: "You must be KYC Verified to trade on the secondary market." });
@@ -129,6 +129,10 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
 
         if (!sellerWallet || !buyerWallet) {
             return res.status(400).json({ message: "Both buyer and seller must have connected wallets." });
+        }
+
+        if (Number(buyerWallet.balance) < Number(listing.total_asking_price)) {
+            return res.status(400).json({ message: "Insufficient Funds" });
         }
 
         const partitionName = `Sukuk_Asset_${listing.sukuk.property_id}`;
@@ -157,6 +161,16 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
             await tx.secondaryListing.update({
                 where: { listing_id: listingId },
                 data: { status: "completed" }
+            });
+
+            // Update Wallet Balances (Hybrid Sync)
+            await tx.wallet.update({
+                where: { wallet_id: buyerWallet.wallet_id },
+                data: { balance: { decrement: listing.total_asking_price } }
+            });
+            await tx.wallet.update({
+                where: { wallet_id: sellerWallet.wallet_id },
+                data: { balance: { increment: listing.total_asking_price } }
             });
 
             // B. Deduct tokens from Seller
@@ -191,7 +205,7 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
                     }
                 });
             }
-            
+
             // D. Log the transaction
             await tx.transactionLog.create({
                 data: {
@@ -207,6 +221,82 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
         res.json({ message: "Trade executed successfully!", txHash });
     } catch (error: any) {
         console.error("Execute Trade Error:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+/**
+ * 4. UPDATE LISTING (Seller Action)
+ * Edit amount and price of an active listing.
+ */
+export const updateListing = async (req: AuthRequest, res: Response) => {
+    try {
+        const sellerId = req.user?.user_id;
+        const listingId = parseInt(req.params.id);
+        const { token_amount, total_asking_price } = req.body;
+
+        if (!sellerId) return res.status(401).json({ message: "Unauthorized" });
+
+        const listing = await prisma.secondaryListing.findUnique({ where: { listing_id: listingId } });
+        if (!listing || listing.seller_id !== sellerId) return res.status(403).json({ message: "Not authorized" });
+        if (listing.status !== "open") return res.status(400).json({ message: "Can only edit open listings." });
+
+        // EXCLUDE this listing when computing locked tokens
+        const activeListings = await prisma.secondaryListing.findMany({
+            where: { seller_id: sellerId, sukuk_id: listing.sukuk_id, status: "open", listing_id: { not: listingId } }
+        });
+        const lockedTokens = activeListings.reduce((sum, l) => sum + l.token_amount, 0);
+
+        const investment = await prisma.investment.findFirst({
+            where: { investor_id: sellerId, sukuk_id: listing.sukuk_id }
+        });
+
+        if (!investment) return res.status(400).json({ message: "Investment not found" });
+
+        const availableTokensToList = investment.tokens_owned - lockedTokens;
+
+        if (availableTokensToList < parseInt(token_amount)) {
+            return res.status(400).json({ message: `You only have ${availableTokensToList} unlocked tokens available.` });
+        }
+
+        const updated = await prisma.secondaryListing.update({
+            where: { listing_id: listingId },
+            data: {
+                token_amount: parseInt(token_amount),
+                total_asking_price: parseFloat(total_asking_price)
+            }
+        });
+
+        res.json({ message: "Listing updated successfully", listing: updated });
+    } catch (error: any) {
+        console.error("Update Listing Error:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+/**
+ * 5. WITHDRAW LISTING (Seller Action)
+ * Cancel an active listing.
+ */
+export const withdrawListing = async (req: AuthRequest, res: Response) => {
+    try {
+        const sellerId = req.user?.user_id;
+        const listingId = parseInt(req.params.id);
+
+        if (!sellerId) return res.status(401).json({ message: "Unauthorized" });
+
+        const listing = await prisma.secondaryListing.findUnique({ where: { listing_id: listingId } });
+        if (!listing || listing.seller_id !== sellerId) return res.status(403).json({ message: "Not authorized" });
+        if (listing.status !== "open") return res.status(400).json({ message: "Can only withdraw open listings." });
+
+        await prisma.secondaryListing.update({
+            where: { listing_id: listingId },
+            data: { status: "cancelled" }
+        });
+
+        res.json({ message: "Listing withdrawn successfully" });
+    } catch (error: any) {
+        console.error("Withdraw Listing Error:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };

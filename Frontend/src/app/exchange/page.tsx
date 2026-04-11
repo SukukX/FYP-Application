@@ -11,11 +11,19 @@ import { Loader2, ArrowRightLeft, Building, Tag } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 export default function SecondaryMarketExchange() {
     const [listings, setListings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
+    const [buyError, setBuyError] = useState<{ id: number, message: string } | null>(null);
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editingListing, setEditingListing] = useState<any>(null);
+    const [editTokens, setEditTokens] = useState("");
+    const [editPrice, setEditPrice] = useState("");
+    const [editError, setEditError] = useState<string | null>(null);
     const { toast } = useToast();
     const { user } = useAuth();
 
@@ -37,6 +45,7 @@ export default function SecondaryMarketExchange() {
 
     const handleBuy = async (listingId: number) => {
         setProcessingId(listingId);
+        setBuyError(null);
         try {
             const res = await api.post(`/exchange/listings/${listingId}/buy`);
             toast({
@@ -46,13 +55,42 @@ export default function SecondaryMarketExchange() {
             // Refresh the board to remove the bought listing
             fetchListings();
         } catch (error: any) {
-            toast({
-                title: "Trade Failed",
-                description: error.response?.data?.message || "Something went wrong.",
-                variant: "destructive",
-            });
+            setBuyError({ id: listingId, message: error.response?.data?.message || "Something went wrong." });
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    const handleWithdraw = async (listingId: number) => {
+        try {
+            await api.delete(`/exchange/listings/${listingId}`);
+            toast({ title: "Listing Withdrawn", description: "Tokens are un-listed and returned to your available balance." });
+            fetchListings();
+        } catch (error: any) {
+            toast({ title: "Withdraw Failed", description: error.response?.data?.message, variant: "destructive" });
+        }
+    };
+
+    const openEditModal = (listing: any) => {
+        setEditingListing(listing);
+        setEditTokens(listing.token_amount.toString());
+        setEditPrice(listing.total_asking_price.toString());
+        setEditError(null);
+        setEditModalOpen(true);
+    };
+
+    const submitEdit = async () => {
+        setEditError(null);
+        try {
+            await api.put(`/exchange/listings/${editingListing.listing_id}`, {
+                token_amount: parseInt(editTokens),
+                total_asking_price: parseFloat(editPrice)
+            });
+            toast({ title: "Success", description: "Listing updated successfully." });
+            setEditModalOpen(false);
+            fetchListings();
+        } catch (error: any) {
+            setEditError(error.response?.data?.message || "Update Failed");
         }
     };
 
@@ -122,8 +160,13 @@ export default function SecondaryMarketExchange() {
                                         </div>
                                     </CardContent>
 
-                                    
                                     <CardFooter className="pt-2 flex flex-col gap-2">
+                                        {buyError?.id === listing.listing_id && (
+                                            <div className="w-full text-center p-2 mb-2 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md animate-pulse">
+                                                {buyError.message}
+                                            </div>
+                                        )}
+
                                         {/* NEW: View Property Details Button */}
                                         <Link href={`/marketplace/${property.property_id}`} className="w-full">
                                             <Button 
@@ -134,22 +177,31 @@ export default function SecondaryMarketExchange() {
                                             </Button>
                                         </Link>
 
-                                        {/* EXISTING: Purchase Bundle Button */}
-                                        <Button 
-                                            className="w-full" 
-                                            size="lg"
-                                            disabled={isOwnListing || processingId === listing.listing_id}
-                                            onClick={() => handleBuy(listing.listing_id)}
-                                            variant={isOwnListing ? "secondary" : "default"}
-                                        >
-                                            {processingId === listing.listing_id ? (
-                                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing Swap...</>
-                                            ) : isOwnListing ? (
-                                                "Your Listing"
-                                            ) : (
-                                                "Purchase Bundle"
-                                            )}
-                                        </Button>
+                                        {/* EXISTING: Purchase Bundle Button or Seller Controls */}
+                                        {isOwnListing ? (
+                                            <div className="w-full flex gap-2">
+                                                <Button className="w-1/2" variant="secondary" onClick={() => openEditModal(listing)}>
+                                                    Edit
+                                                </Button>
+                                                <Button className="w-1/2" variant="destructive" onClick={() => handleWithdraw(listing.listing_id)}>
+                                                    Withdraw
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <Button 
+                                                className="w-full" 
+                                                size="lg"
+                                                disabled={processingId === listing.listing_id}
+                                                onClick={() => handleBuy(listing.listing_id)}
+                                                variant="default"
+                                            >
+                                                {processingId === listing.listing_id ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Swap...</>
+                                                ) : (
+                                                    "Purchase Bundle"
+                                                )}
+                                            </Button>
+                                        )}
                                     </CardFooter>
                                 </Card>
                             );
@@ -158,6 +210,51 @@ export default function SecondaryMarketExchange() {
                 )}
             </div>
             <Chatbot />
+            {/* Edit Modal */}
+            <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Listing</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        {editError && (
+                            <div className="p-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-md text-sm font-medium animate-pulse">
+                                {editError}
+                            </div>
+                        )}
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Bundle Size (Tokens)</label>
+                            <Input
+                                type="number"
+                                min={1}
+                                value={editTokens}
+                                onChange={(e) => setEditTokens(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Total Asking Price (PKR)</label>
+                            <Input
+                                type="number"
+                                min={1}
+                                step="0.01"
+                                value={editPrice}
+                                onChange={(e) => setEditPrice(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={submitEdit}>
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }

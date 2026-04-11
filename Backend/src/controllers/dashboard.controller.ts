@@ -242,7 +242,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                     face_scan: kycRecord.face_scan,
                 } : null,
                 walletAddress: wallet?.wallet_address || null,
-                walletBalance: liveWalletBalance,
+                walletBalance: wallet ? Number(wallet.balance) : 0,
                 mfaEnabled
             },
             ownerData: {

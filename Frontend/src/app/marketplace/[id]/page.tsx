@@ -49,6 +49,7 @@ export default function PropertyDetail() {
     const [numTokens, setNumTokens] = useState(1);
     const [loading, setLoading] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [buyError, setBuyError] = useState<string | null>(null);
 
     useEffect(() => {
         if (id) {
@@ -146,6 +147,8 @@ export default function PropertyDetail() {
      * - Stock Check: Cannot buy more than available tokens.
      */
     const handleBuyTokens = async () => {
+        setBuyError(null);
+
         if (!currentUser) {
             toast({
                 title: "Authentication Required",
@@ -201,11 +204,7 @@ export default function PropertyDetail() {
             setBuyModalOpen(false);
             fetchPropertyDetails(); // Refresh data
         } catch (error: any) {
-            toast({
-                title: "Purchase Failed",
-                description: error.response?.data?.message || "Transaction failed",
-                variant: "destructive",
-            });
+            setBuyError(error.response?.data?.message || "Transaction failed");
         } finally {
             setLoading(false);
         }
@@ -475,6 +474,12 @@ export default function PropertyDetail() {
                     </DialogHeader>
 
                     <div className="space-y-4 py-4">
+                        {buyError && (
+                            <div className="p-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-md text-sm font-medium animate-pulse">
+                                {buyError}
+                            </div>
+                        )}
+
                         <div>
                             <label className="text-sm font-medium mb-2 block">Number of Tokens</label>
                             <Input

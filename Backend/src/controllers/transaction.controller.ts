@@ -48,6 +48,11 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
         // 4. Calculate Price
         const totalPrice = Number(sukuk.token_price) * amount;
 
+        // 4b. Validate Investor Balance
+        if (Number(investorWallet.balance) < totalPrice) {
+            return res.status(400).json({ message: "Insufficient Funds" });
+        }
+
         console.log(`[BUY] Investor ${investorId} buying ${amount} tokens of Property ${propertyId}`);
 
         // 5. Blockchain Transfer (Owner -> Investor)
@@ -103,6 +108,17 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
             await tx.sukuk.update({
                 where: { sukuk_id: sukuk.sukuk_id },
                 data: { available_tokens: { decrement: amount } }
+            });
+
+            // Update Wallet Balances (Hybrid Sync)
+            await tx.wallet.update({
+                where: { wallet_id: investorWallet.wallet_id },
+                data: { balance: { decrement: totalPrice } }
+            });
+
+            await tx.wallet.update({
+                where: { wallet_id: ownerWallet.wallet_id },
+                data: { balance: { increment: totalPrice } }
             });
 
             // Log Transaction
