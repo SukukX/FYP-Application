@@ -11,14 +11,14 @@ import { Request, Response } from "express";
  * 
  * DB Interactions: Property, Sukuk, Document, VerificationLog tables.
  */
-import { PrismaClient, PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus, AuditModule, AuditAction, ActorRole } from "@prisma/client";
+import prisma from '../config/prisma';
+import { PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus, AuditModule, AuditAction, ActorRole } from '@prisma/client';
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "../config/cloudinary";
 
-const prisma = new PrismaClient();
 
 
 // Configure Multer for Property Documents (Cloudinary)

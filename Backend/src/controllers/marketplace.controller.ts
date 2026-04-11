@@ -8,9 +8,9 @@ import { Request, Response } from "express";
  * - Detailed Views (Documents, Price History).
  * - Read-Only access (No state mutation here).
  */
-import { PrismaClient, PropertyType } from "@prisma/client";
+import prisma from '../config/prisma';
+import { PropertyType } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 export const getListings = async (req: Request, res: Response) => {
     try {

@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import * as blockchainService from "../services/blockchain.service";
-import { PrismaClient } from "@prisma/client";
+import prisma from '../config/prisma';
+
 import { AuthRequest } from "../middleware/auth.middleware";
 
-const prisma = new PrismaClient();
 
 /**
  * [DEV TOOL] Sync Blockchain with DB

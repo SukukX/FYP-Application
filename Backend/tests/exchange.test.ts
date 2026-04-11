@@ -2,9 +2,9 @@ import request from "supertest";
 // import { describe,beforeAll } from "node:test";
 import app from "../src/app"; 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-import { PrismaClient } from "@prisma/client";
+import prisma from '../src/config/prisma';
 
-const prisma = new PrismaClient();
+
 
 describe("Secondary Market Exchange API", () => {
     let sellerToken: string;

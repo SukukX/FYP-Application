@@ -1,8 +1,8 @@
 import { Response } from "express";
-import { PrismaClient, KYCStatus } from "@prisma/client";
+import prisma from '../config/prisma';
+import { KYCStatus } from '@prisma/client';
 import { AuthRequest } from "../middleware/auth.middleware";
 
-const prisma = new PrismaClient();
 
 // [HELPER] Smart Alerts System
 const getCommonAlerts = async (userId: number) => {

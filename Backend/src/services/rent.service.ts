@@ -1,6 +1,6 @@
-import { PrismaClient, TransactionType, TransactionStatus } from "@prisma/client";
+import prisma from '../config/prisma';
+import { TransactionType, TransactionStatus } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 /**
  * [SERVICE] Rent Distribution

@@ -1,7 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from '../config/prisma';
+
 import * as blockchainService from "../services/blockchain.service";
 
-const prisma = new PrismaClient();
 
 // Helper function to force the script to pause and let Hardhat catch up
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import prisma from '../config/prisma';
+
 import { AuthRequest } from "../middleware/auth.middleware";
 import * as blockchainService from "../services/blockchain.service";
 
-const prisma = new PrismaClient();
 
 const getPartitionName = (propertyId: number) => `Sukuk_Asset_${propertyId}`;
 

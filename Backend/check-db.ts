@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from './src/config/prisma';
 
-const prisma = new PrismaClient();
+
 
 async function main() {
     console.log("Checking Document table schema...");

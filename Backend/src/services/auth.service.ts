@@ -1,9 +1,9 @@
-import { PrismaClient, Role } from "@prisma/client";
+import prisma from '../config/prisma';
+import { Role } from '@prisma/client';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import * as speakeasy from "speakeasy";
 
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export class AuthService {

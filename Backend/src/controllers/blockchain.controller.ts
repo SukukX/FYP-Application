@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import * as blockchainService from "../services/blockchain.service";
-import { PrismaClient, VerificationStatus } from "@prisma/client";
+import prisma from '../config/prisma';
+import { VerificationStatus } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 // 1. DETERMINISTIC NAMING HELPER
 const getPartitionName = (propertyId: number) => `Sukuk_Asset_${propertyId}`;

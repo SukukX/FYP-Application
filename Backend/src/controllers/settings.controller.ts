@@ -4,10 +4,10 @@ import { Response } from "express";
  * ----------------------------
  * Purpose: Aggregates User Profile, Security (MFA), and Verification (KYC) status.
  */
-import { PrismaClient } from "@prisma/client";
+import prisma from '../config/prisma';
+
 import { AuthRequest } from "../middleware/auth.middleware";
 
-const prisma = new PrismaClient();
 
 export const getSettings = async (req: AuthRequest, res: Response) => {
     try {

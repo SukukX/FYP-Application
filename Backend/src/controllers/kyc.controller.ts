@@ -7,14 +7,14 @@ import { Request, Response } from "express";
  * - Document Upload: Stores files in Cloudinary.
  * - State Management: Tracks status (Pending/Approved/Rejected).
  */
-import { PrismaClient, KYCStatus } from "@prisma/client";
+import prisma from '../config/prisma';
+import { KYCStatus } from '@prisma/client';
 import { AuthRequest } from "../middleware/auth.middleware";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "../config/cloudinary";
 
-const prisma = new PrismaClient();
 
 
 // Configure Multer for Cloudinary storage

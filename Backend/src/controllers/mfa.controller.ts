@@ -5,12 +5,12 @@ import { Request, Response } from "express";
  * Purpose: Two-Factor Authentication logic.
  * Tech: Uses 'Speakeasy' for TOTP generation/verification.
  */
-import { PrismaClient } from "@prisma/client";
+import prisma from '../config/prisma';
+
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
 import { AuthRequest } from "../middleware/auth.middleware";
 
-const prisma = new PrismaClient();
 
 // Generate MFA Secret and QR Code
 export const generateMfaSecret = async (req: AuthRequest, res: Response) => {

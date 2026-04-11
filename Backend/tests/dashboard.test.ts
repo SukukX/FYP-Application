@@ -1,9 +1,9 @@
 import request from "supertest";
 import app from "../src/app"; 
-import { PrismaClient } from "@prisma/client";
+import prisma from '../src/config/prisma';
+
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 
-const prisma = new PrismaClient();
 jest.setTimeout(15000);
 describe("Core System & Dashboard API Tests", () => {
     // Replace these with actual valid JWTs for your test environment

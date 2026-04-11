@@ -1,6 +1,6 @@
-import { PrismaClient, VerificationStatus } from "@prisma/client";
+import prisma from '../config/prisma';
+import { VerificationStatus } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 /**
  * [SERVICE] Price Management
