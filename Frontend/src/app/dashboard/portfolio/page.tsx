@@ -66,6 +66,7 @@ export default function UnifiedPortfolio() {
     const [listings, setListings] = useState<OwnerListing[]>([]);
     const [investorStats, setInvestorStats] = useState({ totalInvestment: 0, totalTokens: 0, propertiesOwned: 0 });
     const [ownerStats, setOwnerStats] = useState({ activeListings: 0, tokensSold: 0, totalRevenue: 0 });
+    const [walletBalance, setWalletBalance] = useState(0);
     const [portfolioChart, setPortfolioChart] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -82,6 +83,7 @@ export default function UnifiedPortfolio() {
             setPortfolioChart(res.data.investorData?.portfolio || []);
             setListings(res.data.ownerData?.listings || []);
             setOwnerStats(res.data.ownerData?.stats || { activeListings: 0, tokensSold: 0, totalRevenue: 0 });
+            setWalletBalance(res.data.common?.walletBalance || 0);
         } catch {
             toast({ title: "Error", description: "Could not load portfolio data.", variant: "destructive" });
         } finally {
@@ -166,9 +168,21 @@ export default function UnifiedPortfolio() {
                 </div>
 
                 {/* ───── UNIFIED STAT CARDS ───── */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    {/* Wallet Balance */}
+                    <Card className="animate-slide-up col-span-2 lg:col-span-1 bg-gradient-to-br from-verified/10 to-transparent border-verified/20">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Wallet Balance</CardTitle>
+                            <Wallet className="h-4 w-4 text-verified" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-verified">PKR {walletBalance.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Available Funds</p>
+                        </CardContent>
+                    </Card>
+
                     {/* Combined Net Worth */}
-                    <Card className="animate-slide-up col-span-2 lg:col-span-1 bg-gradient-to-br from-primary/10 to-accent/5 border-primary/20">
+                    <Card className="animate-slide-up col-span-2 lg:col-span-1 bg-gradient-to-br from-primary/10 to-accent/5 border-primary/20" style={{ animationDelay: "60ms" }}>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Total Net Worth</CardTitle>
                             <Star className="h-4 w-4 text-primary" />
@@ -180,7 +194,7 @@ export default function UnifiedPortfolio() {
                     </Card>
 
                     {/* Investor Stats */}
-                    <Card className="animate-slide-up" style={{ animationDelay: "60ms" }}>
+                    <Card className="animate-slide-up" style={{ animationDelay: "120ms" }}>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Portfolio Value</CardTitle>
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -192,7 +206,7 @@ export default function UnifiedPortfolio() {
                     </Card>
 
                     {/* P&L */}
-                    <Card className="animate-slide-up" style={{ animationDelay: "120ms" }}>
+                    <Card className="animate-slide-up" style={{ animationDelay: "180ms" }}>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Unrealised P&L</CardTitle>
                             {isGain
@@ -211,7 +225,7 @@ export default function UnifiedPortfolio() {
                     </Card>
 
                     {/* Owner Stats */}
-                    <Card className="animate-slide-up" style={{ animationDelay: "180ms" }}>
+                    <Card className="animate-slide-up" style={{ animationDelay: "240ms" }}>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Property Revenue</CardTitle>
                             <Building2 className="h-4 w-4 text-muted-foreground" />

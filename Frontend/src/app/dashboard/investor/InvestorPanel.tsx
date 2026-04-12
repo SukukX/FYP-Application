@@ -12,14 +12,15 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { KYCWizard } from "@/components/KYCWizard";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function InvestorPanel({ investorData, commonData, onRefresh }: { investorData: any, commonData: any, onRefresh: () => void }) {
-    
+
     const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0 };
     const portfolio = investorData?.portfolio || [];
     const investments = investorData?.investments || [];
     const holdings = investorData?.holdings || [];
-    
+
     const kycStatus = commonData?.kycStatus || 'not_submitted';
     const kycRejectionReason = commonData?.kycRejectionReason || null;
     const existingKyc = commonData?.existingKyc || null;
@@ -28,10 +29,14 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [walletAddress, setWalletAddress] = useState("");
-    
+
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
-    const [askingPrice, setAskingPrice] = useState("");
+    // const [askingPrice, setPricePerToken] = useState("");
+    // const [isListing, setIsListing] = useState(false);
+    const [tokenAmount, setTokenAmount] = useState("");
+    const [pricePerToken, setPricePerToken] = useState("");
+    const [daysValid, setDaysValid] = useState("30");
     const [isListing, setIsListing] = useState(false);
 
     const { toast } = useToast();
@@ -45,7 +50,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             const valueAtMonth = holdings.reduce((sum: number, h: any) => {
                 const purchaseDate = new Date(h.purchase_date);
                 if (purchaseDate <= targetDate) {
-                    return sum + (h.current_value || 0); 
+                    return sum + (h.current_value || 0);
                 }
                 return sum;
             }, 0);
@@ -76,13 +81,39 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 description: "Your wallet has been successfully connected.",
             });
             setWalletModalOpen(false);
-            onRefresh(); 
+            onRefresh();
         } catch (error: any) {
             toast({
                 title: "Connection Failed",
                 description: error.response?.data?.error || "Failed to connect wallet.",
                 variant: "destructive",
             });
+        }
+    };
+
+    // The missing logic to send data to the backend
+    const handleCreateListing = async () => {
+        setIsListing(true);
+        try {
+            // Sends the payload to our new Partial Selling API
+            await api.post("/exchange/listings", {
+                sukuk_id: selectedInvestment.sukuk_id,
+                token_amount: parseInt(tokenAmount),
+                price_per_token: parseFloat(pricePerToken),
+                days_valid: parseInt(daysValid)
+            });
+
+            toast({ title: "Success", description: "Tokens listed on the secondary market!" });
+            setSellModalOpen(false);
+            onRefresh();
+        } catch (error: any) {
+            toast({
+                title: "Listing Failed",
+                description: error.response?.data?.message || "Failed to create listing.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsListing(false);
         }
     };
 
@@ -94,7 +125,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 title: "Wallet Disconnected",
                 description: "Your wallet has been removed successfully.",
             });
-            onRefresh(); 
+            onRefresh();
         } catch (error: any) {
             toast({
                 title: "Disconnect Failed",
@@ -186,13 +217,13 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                     <AreaChart data={growthData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02}/>
+                                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
                                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} dy={15} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))", fontWeight: 500 }} tickFormatter={(val) => val >= 1000000 ? `PKR ${(val/1000000).toFixed(1)}M` : `PKR ${(val/1000).toFixed(0)}k`} width={90} tickMargin={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))", fontWeight: 500 }} tickFormatter={(val) => val >= 1000000 ? `PKR ${(val / 1000000).toFixed(1)}M` : `PKR ${(val / 1000).toFixed(0)}k`} width={90} tickMargin={10} />
                                         <AreaTooltip formatter={(val: number) => [`PKR ${val.toLocaleString()}`, "Portfolio Value"]} contentStyle={{ borderRadius: "10px", fontSize: "13px", border: "1px solid hsl(var(--border))" }} itemStyle={{ fontWeight: 600, color: "hsl(var(--primary))" }} />
                                         <Area type="linear" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" dot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--background))", stroke: "hsl(var(--primary))" }} />
                                     </AreaChart>
@@ -282,12 +313,12 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                             <p className="text-xs text-muted-foreground">Original Value</p>
                                             <p className="font-bold text-accent">PKR {Number(inv.purchase_value).toLocaleString()}</p>
                                         </div>
-                                        <Button 
-                                            variant="outline" 
+                                        <Button
+                                            variant="outline"
                                             className="border-primary/20 hover:border-primary/50"
                                             onClick={() => {
                                                 setSelectedInvestment(inv);
-                                                setAskingPrice("");
+                                                setPricePerToken("");
                                                 setSellModalOpen(true);
                                             }}
                                         >
@@ -366,7 +397,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                             <div className="flex-1">
                                 <h3 className="font-semibold text-primary mb-1">
                                     {connectedWallet ? "Wallet Connected" : "Connect Your Wallet"}
-                               </h3>
+                                </h3>
                                 <p className="text-sm text-muted-foreground mb-2">
                                     {connectedWallet ? `Linked: ${connectedWallet.substring(0, 6)}...${connectedWallet.substring(connectedWallet.length - 4)}` : "Link your Ethereum wallet to receive proceeds."}
                                 </p>
@@ -416,38 +447,87 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 </DialogContent>
             </Dialog>
 
-            {/* SELL TOKENS MODAL */}
+            {/* UPDATED: PARTIAL SELLING MODAL */}
             <Dialog open={sellModalOpen} onOpenChange={setSellModalOpen}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle>List on Secondary Market</DialogTitle>
-                        <DialogDescription>Create a P2P listing to sell your tokens. You are creating a fixed bundle of <strong>{selectedInvestment?.tokens_owned} tokens</strong>.</DialogDescription>
+                        <DialogTitle className="flex items-center gap-2">
+                            <ArrowRightLeft className="h-5 w-5 text-primary" />
+                            List on Secondary Market
+                        </DialogTitle>
+                        <DialogDescription>
+                            Set your price and choose how many tokens you'd like to list.
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
+
+                    <div className="space-y-6 py-4">
+                        {/* 1. QUANTITY INPUT */}
                         <div className="space-y-2">
-                            <Label htmlFor="askingPrice">Total Asking Price for Bundle (PKR)</Label>
-                            <Input id="askingPrice" type="number" placeholder="e.g. 500000" value={askingPrice} onChange={(e) => setAskingPrice(e.target.value)} />
-                            {askingPrice && selectedInvestment?.tokens_owned > 0 && (
-                                <p className="text-xs text-muted-foreground mt-2">Implied price per token: PKR {(parseFloat(askingPrice) / selectedInvestment.tokens_owned).toFixed(2)}</p>
-                            )}
+                            <div className="flex justify-between">
+                                <Label htmlFor="tokenAmount">Amount to Sell</Label>
+                                <span className="text-xs text-muted-foreground">Owned: {selectedInvestment?.tokens_owned}</span>
+                            </div>
+                            <Input
+                                id="tokenAmount"
+                                type="number"
+                                placeholder="Quantity"
+                                value={tokenAmount}
+                                onChange={(e) => setTokenAmount(e.target.value)}
+                            />
                         </div>
+
+                        {/* 2. PRICE PER TOKEN INPUT */}
+                        <div className="space-y-2">
+                            <Label htmlFor="pricePerToken">Asking Price (Per Token)</Label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">PKR</span>
+                                <Input
+                                    id="pricePerToken"
+                                    className="pl-12"
+                                    type="number"
+                                    placeholder="e.g. 2600"
+                                    value={pricePerToken}
+                                    onChange={(e) => setPricePerToken(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        {/* 3. DURATION SELECT */}
+                        <div className="space-y-2">
+                            <Label>Listing Expiry</Label>
+                            <Select value={daysValid} onValueChange={setDaysValid}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select duration" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="7">7 Days</SelectItem>
+                                    <SelectItem value="30">30 Days</SelectItem>
+                                    <SelectItem value="90">90 Days</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* SUMMARY CARD */}
+                        {pricePerToken && tokenAmount && (
+                            <div className="p-4 bg-primary/5 rounded-lg border border-primary/10">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-muted-foreground">Total Sale Value:</span>
+                                    <span className="font-bold text-primary">
+                                        PKR {(parseInt(tokenAmount) * parseFloat(pricePerToken)).toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
+
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setSellModalOpen(false)} disabled={isListing}>Cancel</Button>
-                        <Button disabled={isListing || !askingPrice || parseFloat(askingPrice) <= 0} onClick={async () => {
-                            setIsListing(true);
-                            try {
-                                await api.post("/exchange/listings", { sukuk_id: selectedInvestment.sukuk_id, token_amount: selectedInvestment.tokens_owned, total_asking_price: parseFloat(askingPrice) });
-                                toast({ title: "Success", description: "Tokens listed!" });
-                                setSellModalOpen(false);
-                                onRefresh(); 
-                            } catch (error: any) {
-                                toast({ title: "Error", description: error.response?.data?.message || "Failed to list.", variant: "destructive" });
-                            } finally {
-                                setIsListing(false);
-                            }
-                        }}>
-                            {isListing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Listing...</> : "Confirm Listing"}
+                        <Button variant="outline" onClick={() => setSellModalOpen(false)}>Cancel</Button>
+                        <Button
+                            disabled={isListing || !pricePerToken || !tokenAmount || parseInt(tokenAmount) > selectedInvestment?.tokens_owned}
+                            onClick={handleCreateListing}
+                        >
+                            {isListing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Confirm & List
                         </Button>
                     </DialogFooter>
                 </DialogContent>
