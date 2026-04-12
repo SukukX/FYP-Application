@@ -69,6 +69,9 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         const wallet = await prisma.wallet.findFirst({
             where: { user_id: userId, is_primary: true }
         });
+        const user = await prisma.user.findUnique({
+            where: { user_id: userId },
+        });
         const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
         const mfaEnabled = (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false;
 
@@ -214,15 +217,17 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         // ==========================================
         // 4. Send the Unified Response
         // ==========================================
-        let liveWalletBalance = 0;
-        if (wallet?.wallet_address) {
-            try {
-                const balance = await provider.getBalance(wallet.wallet_address);
-                liveWalletBalance = parseFloat(ethers.formatEther(balance));
-            } catch (err) {
-                console.error("Failed to fetch wallet balance via ethers:", err);
-            }
-        }
+        // let liveWalletBalance = 0;
+        // if (wallet?.wallet_address) {
+        //     try {
+        //         const balance = await provider.getBalance(wallet.wallet_address);
+        //         liveWalletBalance = parseFloat(ethers.formatEther(balance));
+        //     } catch (err) {
+        //         console.error("Failed to fetch wallet balance via ethers:", err);
+        //     }
+        // }
+        const liveWalletBalance = user?.fiat_balance || 0;
+
 
         res.json({
             role: "user", // The new unified role

@@ -20,7 +20,7 @@ model User {
   dob          DateTime? @db.Date
   profile_pic  String?   @db.VarChar(256)
   cnic         String?   @unique @db.VarChar(15)
-  fiat_balance Decimal   @default(0.00) @db.Decimal(15, 2)
+  fiat_balance Decimal   @default(100000.00) @db.Decimal(15, 2)
   is_active    Boolean   @default(true)
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt

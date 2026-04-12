@@ -149,7 +149,7 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
         const totalCost = tokensToBuy * parseFloat(listing.price_per_token.toString());
         
         if (parseFloat(buyer!.fiat_balance.toString()) < totalCost) {
-            return res.status(400).json({ message: `Insufficient funds. You need PKR ${totalCost}.` });
+            return res.status(400).json({ message: `Insufficient funds. You need PKR ${totalCost}. You have ${buyer!.fiat_balance}` });
         }
 
         // Get Wallets for the Blockchain Transfer

@@ -38,15 +38,28 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
         const investorWallet = await prisma.wallet.findFirst({
             where: { user_id: investorId, is_primary: true }
         });
+        const investor = await prisma.user.findUnique({
+            where: { user_id: investorId }
+        });
+        const owner = await prisma.user.findUnique({
+            where: { user_id: property.owner_id }
+        });
         if (!investorWallet) return res.status(400).json({ message: "Please connect your wallet first" });
 
         const ownerWallet = await prisma.wallet.findFirst({
             where: { user_id: property.owner_id, is_primary: true }
         });
         if (!ownerWallet) return res.status(500).json({ message: "Owner wallet not configured" });
+        const investor_balance = investor?.fiat_balance || 0;
+        const owner_balance = owner?.fiat_balance || 0;
 
         // 4. Calculate Price
-        const totalPrice = Number(sukuk.token_price) * amount;
+        const totalPriceExcludingFee = (Number(sukuk.token_price) * amount);
+        const totalPrice = (Number(sukuk.token_price) * amount) * 1.02;
+
+        if (investor_balance < totalPrice) {
+            return res.status(400).json({ message: `Insufficient balance. Your current balance is ${investor_balance} PKR and you need ${totalPrice} PKR` });
+        }
 
         console.log(`[BUY] Investor ${investorId} buying ${amount} tokens of Property ${propertyId}`);
 
@@ -105,6 +118,16 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
                 data: { available_tokens: { decrement: amount } }
             });
 
+            await tx.user.update({
+                where: { user_id: investorId },
+                data: { fiat_balance: { decrement: totalPrice } }
+            });
+
+            await tx.user.update({
+                where: { user_id: property.owner_id },
+                data: { fiat_balance: { increment: totalPriceExcludingFee } }
+            });
+
             // Log Transaction
             await tx.transactionLog.create({
                 data: {
@@ -122,7 +145,7 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
                 data: {
                     user_id: property.owner_id,
                     type: "transaction",
-                    message: `${amount} tokens of '${property.title}' were sold for PKR ${totalPrice}`
+                    message: `${amount} tokens of '${property.title}' were sold for PKR ${totalPriceExcludingFee}`
                 }
             });
         });
