@@ -27,12 +27,10 @@ export const uploadPropertyDocs = multer({ storage: storage });
 /**
  * [ACTION] Create Property
  * Flow:
- * 1. Validates inputs & formats numbers (safely handles drafts with missing data).
+ * 1. Validates inputs & safely parses numbers.
  * 2. Creates 'Property' record in DB.
- * 3. Creates initial 'Sukuk' record (1-to-1 mapping with Property).
- * 4. Iterates through uploaded files (Multer) & creates 'Document' records linked to Cloudinary paths.
- * 
- * Note: If 'isDraft' is true, status is set to DRAFT (bypassing strict validation).
+ * 3. Creates initial 'Sukuk' record with STRICT MATH ENFORCEMENT.
+ * 4. Iterates through uploaded files (Multer) & creates 'Document' records.
  */
 export const createProperty = async (req: AuthRequest, res: Response) => {
     try {
@@ -42,8 +40,6 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-
-
         const {
             title,
             location,
@@ -51,10 +47,9 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             property_type,
             valuation,
             total_tokens,
-            tokens_for_sale,
-            price_per_token,
             isDraft
-        } = req.body;
+        } = req.body; 
+        // Notice we ignore 'price_per_token' and 'tokens_for_sale' from the frontend entirely!
 
         // Helper to safely parse numbers, defaulting to 0 for drafts
         const safeParseFloat = (val: any) => {
@@ -66,6 +61,19 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             return isNaN(parsed) ? 0 : parsed;
         };
 
+        const parsedValuation = safeParseFloat(valuation);
+        const parsedTotalTokens = safeParseInt(total_tokens);
+
+        // VULNERABILITY FIX 1: Enforce Absolute Price Math
+        // Token Price = Total Valuation / Total Tokens
+        const calculatedTokenPrice = parsedTotalTokens > 0 
+            ? (parsedValuation / parsedTotalTokens) 
+            : 0;
+
+        // VULNERABILITY FIX 2: Enforce Genesis Capacity
+        // At the moment of creation, the available supply MUST equal the total supply
+        const genesisAvailableTokens = parsedTotalTokens;
+
         const property = await prisma.property.create({
             data: {
                 owner_id: userId,
@@ -73,28 +81,27 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                 location: location || "",
                 description: description || "",
                 property_type: property_type as PropertyType || "commercial",
-                valuation: safeParseFloat(valuation),
+                valuation: parsedValuation,
                 verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
                 listing_status: ListingStatus.hidden,
             },
         });
 
-        // Create initial Sukuk offering
+        // Create initial Sukuk offering with strictly calculated data
         await prisma.sukuk.create({
             data: {
                 property_id: property.property_id,
-                total_tokens: safeParseInt(total_tokens),
-                available_tokens: safeParseInt(tokens_for_sale),
-                token_price: safeParseFloat(price_per_token),
+                total_tokens: parsedTotalTokens,
+                available_tokens: genesisAvailableTokens, // FIXED: No more missing tokens
+                token_price: calculatedTokenPrice,        // FIXED: No more double revenue
                 status: "active"
             }
         });
 
-        // Handle File Uploads
+        // Handle File Uploads (Images and Documents remain unchanged)
         const files = (req as any).files as { [fieldname: string]: Express.Multer.File[] };
 
         if (files) {
-            // Handle Images
             if (files['images']) {
                 for (const file of files['images']) {
                     await prisma.document.create({
@@ -102,15 +109,13 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                             property_id: property.property_id,
                             file_name: file.originalname,
                             file_type: file.mimetype,
-                            file_path: file.path, // Cloudinary URL
+                            file_path: file.path, 
                             file_hash: "pending_hash",
                             verification_status: VerificationStatusDoc.pending,
                         },
                     });
                 }
             }
-
-            // Handle Legal Documents
             if (files['documents']) {
                 for (const file of files['documents']) {
                     await prisma.document.create({
@@ -118,7 +123,7 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                             property_id: property.property_id,
                             file_name: file.originalname,
                             file_type: file.mimetype,
-                            file_path: file.path, // Cloudinary URL
+                            file_path: file.path, 
                             file_hash: "pending_hash",
                             verification_status: VerificationStatusDoc.pending,
                         },
