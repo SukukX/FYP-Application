@@ -47,11 +47,10 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             property_type,
             valuation,
             total_tokens,
+            tokens_for_sale, // <--- 1. BRING THIS BACK
             isDraft
         } = req.body; 
-        // Notice we ignore 'price_per_token' and 'tokens_for_sale' from the frontend entirely!
 
-        // Helper to safely parse numbers, defaulting to 0 for drafts
         const safeParseFloat = (val: any) => {
             const parsed = parseFloat(val);
             return isNaN(parsed) ? 0 : parsed;
@@ -63,16 +62,18 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
 
         const parsedValuation = safeParseFloat(valuation);
         const parsedTotalTokens = safeParseInt(total_tokens);
+        
+        // 2. Safely parse what the owner wants to sell
+        let parsedTokensForSale = safeParseInt(tokens_for_sale);
+        
+        // Safety check: Cannot sell more than total, cannot sell less than 0
+        if (parsedTokensForSale <= 0 || parsedTokensForSale > parsedTotalTokens) {
+            parsedTokensForSale = parsedTotalTokens; 
+        }
 
-        // VULNERABILITY FIX 1: Enforce Absolute Price Math
-        // Token Price = Total Valuation / Total Tokens
         const calculatedTokenPrice = parsedTotalTokens > 0 
             ? (parsedValuation / parsedTotalTokens) 
             : 0;
-
-        // VULNERABILITY FIX 2: Enforce Genesis Capacity
-        // At the moment of creation, the available supply MUST equal the total supply
-        const genesisAvailableTokens = parsedTotalTokens;
 
         const property = await prisma.property.create({
             data: {
@@ -87,13 +88,13 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             },
         });
 
-        // Create initial Sukuk offering with strictly calculated data
+        // 3. Create initial Sukuk respecting the owner's public sale choice
         await prisma.sukuk.create({
             data: {
                 property_id: property.property_id,
                 total_tokens: parsedTotalTokens,
-                available_tokens: genesisAvailableTokens, // FIXED: No more missing tokens
-                token_price: calculatedTokenPrice,        // FIXED: No more double revenue
+                available_tokens: parsedTokensForSale, // <--- FIXED: Only lists what the owner chose
+                token_price: calculatedTokenPrice,
                 status: "active"
             }
         });
@@ -445,6 +446,30 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                     ip_address: req.ip || null,
                 }
             });
+            // if (status === "approved" && blockchainTxHash) {
+            //     const sukuk = property.sukuks[0];
+
+            //     // Activate Sukuk
+            //     await tx.sukuk.update({
+            //         where: { sukuk_id: sukuk.sukuk_id },
+            //         data: {
+            //             blockchain_hash: blockchainTxHash,
+            //             status: 'active'
+            //         }
+            //     });
+
+            //     // Grant Inventory to Owner
+            //     await tx.investment.create({
+            //         data: {
+            //             investor_id: property.owner_id,
+            //             sukuk_id: sukuk.sukuk_id,
+            //             tokens_owned: sukuk.total_tokens,
+            //             purchase_value: 0,
+            //             tx_hash: blockchainTxHash
+            //         }
+            //     });
+            // }
+
             if (status === "approved" && blockchainTxHash) {
                 const sukuk = property.sukuks[0];
 
@@ -457,18 +482,28 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                     }
                 });
 
-                // Grant Inventory to Owner
-                await tx.investment.create({
-                    data: {
-                        investor_id: property.owner_id,
-                        sukuk_id: sukuk.sukuk_id,
-                        tokens_owned: sukuk.total_tokens,
-                        purchase_value: 0,
-                        tx_hash: blockchainTxHash
-                    }
-                });
+                // NEW MATH: Calculate ONLY the tokens the owner is keeping
+                const retainedTokens = sukuk.total_tokens - sukuk.available_tokens;
+
+                // Grant Inventory to Owner (Only the retained equity!)
+                if (retainedTokens > 0) {
+                    await tx.investment.create({
+                        data: {
+                            investor_id: property.owner_id,
+                            sukuk_id: sukuk.sukuk_id,
+                            tokens_owned: retainedTokens, // <--- THE FIX
+                            purchase_value: 0,
+                            tx_hash: blockchainTxHash
+                        }
+                    });
+                }
             }
-        });
+        },
+        {
+            maxWait: 5000,   // Wait up to 5s for a database connection
+            timeout: 20000   // Give the transaction 20s to finish
+        }
+    );
 
         res.json({ message: `Property ${status} (Tokenization: ${!!blockchainTxHash})` });
 

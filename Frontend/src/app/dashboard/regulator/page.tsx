@@ -386,7 +386,7 @@ export default function RegulatorDashboard() {
                                     <p className="text-sm text-muted-foreground">Full history of all KYC and property verification decisions</p>
                                 </div>
                             </div>
-                            <Link href="/dashboard/regulator/logs">
+                            <Link href="/dashboard/regulator/audit-logs">
                                 <Button variant="outline" className="gap-2">
                                     <ClipboardList className="h-4 w-4" />
                                     View Logs

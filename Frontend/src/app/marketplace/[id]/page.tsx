@@ -137,6 +137,7 @@ export default function PropertyDetail() {
         ? ((currentPrice - priceHistory[0].price) / priceHistory[0].price) * 100
         : 0;
 
+    const isOwner = currentUser?.user_id === listing.owner_id;
     /**
      * [ACTION] Buy Tokens
      * Guard Rails:
@@ -420,7 +421,7 @@ export default function PropertyDetail() {
                                     </span>
                                 </div>
 
-                                <div className="pt-4 border-t space-y-2">
+                                {/* <div className="pt-4 border-t space-y-2">
                                     <Button
                                         className="w-full"
                                         size="lg"
@@ -459,6 +460,56 @@ export default function PropertyDetail() {
                                         }}
                                     >
                                         Sell Tokens
+                                    </Button>
+                                </div> */}
+
+                                <div className="pt-4 border-t space-y-2">
+                                    {/* 1. Only show "Buy Tokens" if they are NOT the owner */}
+                                    {!isOwner && (
+                                        <Button
+                                            className="w-full"
+                                            size="lg"
+                                            onClick={() => {
+                                                if (!currentUser) {
+                                                    toast({
+                                                        title: "Login Required",
+                                                        description: "Please log in to purchase tokens.",
+                                                        variant: "destructive",
+                                                        action: (
+                                                            <Link href="/auth/login">
+                                                                <Button variant="outline" size="sm">Login</Button>
+                                                            </Link>
+                                                        )
+                                                    });
+                                                    return;
+                                                }
+                                                setBuyModalOpen(true);
+                                            }}
+                                        >
+                                            <Wallet className="mr-2 h-4 w-4" />
+                                            Buy Tokens
+                                        </Button>
+                                    )}
+
+                                    {/* 2. Show dynamic text for the "Sell" button */}
+                                    <Button
+                                        variant="outline"
+                                        className="w-full"
+                                        size="lg"
+                                        onClick={() => {
+                                            if (!currentUser) {
+                                                toast({
+                                                    title: "Login Required",
+                                                    description: "Please log in to sell tokens.",
+                                                    variant: "destructive",
+                                                });
+                                                return;
+                                            }
+                                            // The actual selling happens on the dashboard via the Secondary Market
+                                            window.location.href = "/dashboard"; 
+                                        }}
+                                    >
+                                        {isOwner ? "Sell Retained Equity" : "Sell Owned Tokens"}
                                     </Button>
                                 </div>
                             </CardContent>
