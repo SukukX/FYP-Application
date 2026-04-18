@@ -1,162 +1,134 @@
 import prisma from '../config/prisma';
-
 import * as blockchainService from "../services/blockchain.service";
+import { ethers } from "ethers";
+import { provider } from "../config/blockchain";
 
-
-// Helper function to force the script to pause and let Hardhat catch up
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Auto-Sync Script
- * Runs automatically when backend starts to sync blockchain state
+ * [HELPER] Faucet: Ensures demo users have ETH for gas
  */
-async function autoSyncBlockchain() {
+async function fundWalletIfEmpty(address: string, name: string) {
     try {
-        console.log("\n🔄 [AUTO-SYNC] Starting blockchain state synchronization...\n");
+        const balance = await provider.getBalance(address);
+        const ethBalance = ethers.formatEther(balance);
 
-        const sukuks = await prisma.sukuk.findMany({
-            where: { status: 'active' },
-            include: { property: true }
-        });
-
-        if (sukuks.length === 0) {
-            console.log("✅ [AUTO-SYNC] No active sukuks found. Nothing to sync.\n");
-            return;
-        }
-
-        console.log(`📋 [AUTO-SYNC] Found ${sukuks.length} active sukuk(s) to sync.\n`);
-
-        for (const sukuk of sukuks) {
-            const ownerWallet = await prisma.wallet.findFirst({
-                where: { user_id: sukuk.property.owner_id, is_primary: true }
+        if (parseFloat(ethBalance) < 1.0) {
+            console.log(`   💰 [FAUCET] Funding ${name}: ${ethBalance} ETH -> 5.0 ETH`);
+            const signer = await provider.getSigner(0); 
+            const tx = await signer.sendTransaction({
+                to: address,
+                value: ethers.parseEther("5.0")
             });
-
-            if (ownerWallet) {
-                const partitionName = `Sukuk_Asset_${sukuk.property_id}`;
-                console.log(`   🔧 Syncing: ${partitionName} (${sukuk.property.title})`);
-
-                let success = false;
-                let retries = 3;
-
-                while (retries > 0 && !success) {
-                    try {
-                        // STEP 1: Create Partition
-                        try {
-                            await blockchainService.createPartition(partitionName);
-                            await delay(1500); // 🟢 Give Hardhat time to clear the mempool
-                        } catch (e: any) {
-                            if (!e.message.includes("already exists") && !e.message.includes("revert")) throw e;
-                        }
-
-                        // STEP 2: Check Balance
-                        const balance = await blockchainService.getBalance(partitionName, ownerWallet.wallet_address);
-                        
-                        if (parseFloat(balance) === 0) {
-                            // STEP 3: Whitelist Owner
-                            try {
-                                await blockchainService.addToWhitelist(ownerWallet.wallet_address);
-                                await delay(1500); // 🟢 The crucial breath before issuing tokens!
-                            } catch (e: any) {
-                                if (!e.message.includes("already whitelisted") && !e.message.includes("revert")) throw e;
-                            }
-
-                            // STEP 4: Issue Tokens
-                            await blockchainService.issueTokens(partitionName, ownerWallet.wallet_address, sukuk.total_tokens.toString());
-                            await delay(1500); // 🟢 Give Hardhat time to settle
-                        }
-                        
-                        console.log(`   ✅ ${partitionName} synced successfully`);
-                        success = true;
-
-                    } catch (err: any) {
-                        retries--;
-                        if (retries > 0) {
-                            console.log(`   ⏳ Sync collision detected. Retrying in 3 seconds... (${retries} attempts left)`);
-                            await delay(3000);
-                        } else {
-                            console.log(`   ❌ ${partitionName} sync failed: ${err.message}`);
-                        }
-                    }
-                }
-            } else {
-                console.log(`   ⚠️  Sukuk_Asset_${sukuk.property_id}: No owner wallet found`);
-            }
+            await tx.wait();
+            console.log(`   ✅ [FAUCET] Sent 5 ETH to ${name}`);
+            await delay(1000);
+        } else {
+            console.log(`   ✓  [FAUCET] ${name} already has ${parseFloat(ethBalance).toFixed(2)} ETH`);
         }
-
-        console.log("\n✅ [AUTO-SYNC] Blockchain synchronization complete!\n");
-
-        // ============================================
-        // STEP 2: Re-whitelist all approved investors
-        // ============================================
-        console.log("🔐 [AUTO-SYNC] Re-whitelisting approved investors...\n");
-
-        const approvedUsers = await prisma.kYCRequest.findMany({
-            where: { status: 'approved' },
-            include: {
-                user: {
-                    include: {
-                        wallets: { where: { is_primary: true } }
-                    }
-                }
-            }
-        });
-
-        let whitelistedCount = 0;
-        let skippedCount = 0;
-
-        for (const kyc of approvedUsers) {
-            const wallet = kyc.user.wallets[0];
-
-            if (wallet) {
-                let wRetries = 3;
-                let wSuccess = false;
-
-                while (wRetries > 0 && !wSuccess) {
-                    try {
-                        console.log(`   🔓 Whitelisting: ${kyc.user.name} (${wallet.wallet_address.slice(0, 10)}...)`);
-                        await blockchainService.addToWhitelist(wallet.wallet_address);
-                        
-                        console.log(`   ✅ Whitelisted: ${kyc.user.name}`);
-                        wSuccess = true;
-                        whitelistedCount++;
-                        
-                        await delay(1500); // 🟢 1.5-second delay between successful whitelists
-                    } catch (error: any) {
-                        if (error.message.includes("already whitelisted") || error.message.includes("revert")) {
-                            console.log(`   ✓  Already whitelisted: ${kyc.user.name}`);
-                            wSuccess = true; 
-                            whitelistedCount++;
-                        } else {
-                            wRetries--;
-                            if (wRetries > 0) {
-                                console.log(`   ⏳ Whitelist collision. Retrying in 3 seconds...`);
-                                await delay(3000);
-                            } else {
-                                console.log(`   ⚠️  Failed to whitelist ${kyc.user.name}: ${error.message}`);
-                            }
-                        }
-                    }
-                }
-            } else {
-                console.log(`   ⏭️  Skipped ${kyc.user.name}: No wallet connected`);
-                skippedCount++;
-            }
-        }
-
-        console.log(`\n✅ [AUTO-SYNC] Whitelisted ${whitelistedCount} investor(s), skipped ${skippedCount}\n`);
-        console.log("🎉 [AUTO-SYNC] Full blockchain state restoration complete!\n");
-
-    } catch (error: any) {
-        console.error("\n❌ [AUTO-SYNC] Sync failed:", error.message);
-        console.error("   You can manually sync later using POST /api/blockchain/sync\n");
-    } finally {
-        await prisma.$disconnect();
+    } catch (err: any) {
+        console.error(`   ⚠️  [FAUCET] Could not fund ${name}:`, err.message);
     }
 }
 
-// Run if called directly
-if (require.main === module) {
-    autoSyncBlockchain();
+async function autoSyncBlockchain() {
+    try {
+        console.log("\n🔄 [AUTO-SYNC] Starting full state restoration...\n");
+
+        // STEP 1: Sync Properties & Mint to Owners
+        // FIX: Using snake_case 'wallets' as per your Prisma generated types
+        const sukuks = await prisma.sukuk.findMany({
+            include: { 
+                property: { 
+                    include: { 
+                        owner: { 
+                            include: { wallets: { where: { is_primary: true } } } 
+                        } 
+                    } 
+                } 
+            }
+        });
+
+        for (const sukuk of sukuks) {
+            const ownerWallet = sukuk.property.owner.wallets[0];
+            if (!ownerWallet) continue;
+
+            const partitionName = `Sukuk_Asset_${sukuk.property_id}`;
+            console.log(`   🔧 Property: ${sukuk.property.title}`);
+            
+            try {
+                try { await blockchainService.createPartition(partitionName); } catch (e) {}
+                try { await blockchainService.addToWhitelist(ownerWallet.wallet_address); } catch (e) {}
+
+                const balance = await blockchainService.getBalance(partitionName, ownerWallet.wallet_address);
+                if (parseFloat(balance) === 0) {
+                    await blockchainService.issueTokens(partitionName, ownerWallet.wallet_address, sukuk.total_tokens.toString());
+                    console.log(`      ✅ Total tokens minted to owner.`);
+                }
+            } catch (err: any) { 
+                console.log(`      ❌ Property sync failed: ${err.message}`); 
+            }
+        }
+
+        // STEP 2: Restore Gas & Whitelist Investors
+        // FIX: Relation name is likely 'kyc_request' in your schema
+        const investors = await prisma.user.findMany({
+            where: { kyc_request: { status: 'approved' } },
+            include: { wallets: { where: { is_primary: true } } }
+        });
+
+        for (const inv of investors) {
+            const wallet = inv.wallets[0];
+            if (wallet) {
+                await fundWalletIfEmpty(wallet.wallet_address, inv.name);
+                try { await blockchainService.addToWhitelist(wallet.wallet_address); } catch (e) {}
+            }
+        }
+
+        // STEP 3: Restore Individual Token Holdings
+        console.log("\n📈 [AUTO-SYNC] Restoring Token Holdings from Database...\n");
+
+        const allInvestments = await prisma.investment.findMany({
+            include: { 
+                sukuk: { include: { property: { include: { owner: { include: { wallets: { where: { is_primary: true } } } } } } } },
+                investor: { include: { wallets: { where: { is_primary: true } } } }
+            }
+        });
+
+        for (const inv of allInvestments) {
+            const investorWallet = inv.investor.wallets[0]?.wallet_address;
+            const ownerWalletObj = inv.sukuk.property.owner.wallets[0];
+            
+            if (!investorWallet || !ownerWalletObj) continue;
+
+            const propertyId = inv.sukuk.property_id;
+            const ownerId = inv.sukuk.property.owner_id;
+
+            if (inv.investor_id === ownerId) continue;
+
+            const partitionName = `Sukuk_Asset_${propertyId}`;
+            const onChainBal = await blockchainService.getBalance(partitionName, investorWallet);
+
+            if (parseFloat(onChainBal) === 0 && inv.tokens_owned > 0) {
+                console.log(`   🔗 Restoring ${inv.tokens_owned} tokens for ${inv.investor.name}...`);
+                
+                // FIX: Passing the actual owner wallet address instead of 'null'
+                await blockchainService.transferTokens(
+                    partitionName,
+                    ownerWalletObj.wallet_address, 
+                    investorWallet,
+                    inv.tokens_owned.toString()
+                );
+                console.log(`      ✅ Restored.`);
+                await delay(1000);
+            }
+        }
+
+        console.log("\n🎉 [AUTO-SYNC] System is fully synchronized and ready!\n");
+
+    } catch (error: any) {
+        console.error("\n❌ [AUTO-SYNC] Sync failed:", error.message);
+    }
 }
 
 export default autoSyncBlockchain;
