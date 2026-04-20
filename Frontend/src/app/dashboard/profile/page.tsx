@@ -330,11 +330,13 @@ export default function ProfilePage() {
             setMfaStep('success');
 
             // Update User Context
-            const updatedUser = { ...user } as any;
-            if (!updatedUser.mfa_setting) updatedUser.mfa_setting = {};
-            updatedUser.mfa_setting.is_enabled = true;
-            setUser(updatedUser);
-
+            setUser(prev => ({
+                ...prev!,
+                mfa_setting: {
+                    ...prev?.mfa_setting,
+                    is_enabled: true,
+                },
+            }));
             toast({
                 title: "MFA Enabled",
                 description: "Two-Factor Authentication is now active.",
@@ -368,10 +370,14 @@ export default function ProfilePage() {
             try {
                 await api.put("/users/mfa", { isEnabled: false });
 
-                const updatedUser = { ...user } as any;
-                if (updatedUser.mfa_setting) updatedUser.mfa_setting.is_enabled = false;
-                setUser(updatedUser);
-
+                
+                setUser(prev => ({
+                    ...prev!,
+                    mfa_setting: {
+                        ...prev?.mfa_setting,
+                        is_enabled: false,
+                    },
+                }));
                 toast({
                     title: "MFA Disabled",
                     description: "Two-Factor Authentication has been turned off.",
@@ -585,7 +591,7 @@ export default function ProfilePage() {
                                         <div className="flex items-center gap-2">
                                             {isMfaLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                                             <Switch
-                                                checked={(user as any).mfa_setting?.is_enabled || false}
+                                                checked={!!(user as any)?.mfa_setting?.is_enabled}
                                                 onCheckedChange={handleToggleMFA}
                                                 disabled={isMfaLoading}
                                             />

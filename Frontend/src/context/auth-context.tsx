@@ -21,14 +21,18 @@ interface User {
     created_at?: string | Date;
     kycStatus?: string; // Legacy or alternative
     walletAddress?: string;
+    mfa_setting?: {
+        is_enabled: boolean;
+    };
 }
 
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (token: string, user: User) => void;
+    login: (token: string, user: User) => Promise<void>;
     logout: () => void;
-    setUser: (user: User | null) => void;
+    // setUser: (user: User | null) => void;
+    setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,17 +60,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkAuth();
     }, []);
 
-    const login = (token: string, userData: User) => {
-        Cookies.set("token", token, { expires: 7 }); // 7 days
-        setUser(userData);
+    
+    const login = async (token: string, userData: User) => {
+        Cookies.set("token", token, { expires: 7 });
 
-        // Redirect based on role
-        if (userData.role === 'user') {
+        try {
+            // ALWAYS fetch fresh user from backend
+            const res = await api.get("/users/profile");
+
+            setUser(res.data);
+        } catch (error) {
+            console.error("Failed to fetch user after login:", error);
+            setUser(userData); // fallback only
+        }
+
+        // Redirect based on role (use fetched OR fallback)
+        const role = userData.role;
+
+        if (role === "user") {
             router.push("/dashboard");
-        } else if (userData.role === 'regulator') {
+        } else if (role === "regulator") {
             router.push("/dashboard/regulator");
         } else {
-            router.push("/dashboard"); // Fallback
+            router.push("/dashboard");
         }
     };
 
