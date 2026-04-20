@@ -22,6 +22,9 @@ interface User {
     created_at?: string | Date;
     kycStatus?: string; // Legacy or alternative
     walletAddress?: string;
+    is_active: boolean;
+    rejection_reason?: string;
+    is_resubmitted: boolean;
     mfa_setting?: {
         is_enabled: boolean;
     };

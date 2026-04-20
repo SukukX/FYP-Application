@@ -23,7 +23,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import api from "@/lib/api";
-import { Loader2, Camera, Shield, Wallet, User, Lock, ExternalLink, Link as LinkIcon } from "lucide-react";
+import { Loader2, Camera, Shield, Wallet, User, Lock, ExternalLink, Link as LinkIcon, Trash2, AlertTriangle, XCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 
 export default function ProfilePage() {
@@ -63,6 +64,14 @@ export default function ProfilePage() {
 
     // MFA State
     const [isMfaLoading, setIsMfaLoading] = useState(false);
+
+    // Account Management State
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [accountLoading, setAccountLoading] = useState(false);
+    const [deleteStep, setDeleteStep] = useState<'confirm' | 'verify'>('confirm');
+    const [deletePassword, setDeletePassword] = useState("");
+    const [deleteMfaToken, setDeleteMfaToken] = useState("");
+    const [managementError, setManagementError] = useState<string | null>(null);
 
 
 
@@ -370,7 +379,7 @@ export default function ProfilePage() {
             try {
                 await api.put("/users/mfa", { isEnabled: false });
 
-                
+
                 setUser(prev => ({
                     ...prev!,
                     mfa_setting: {
@@ -391,6 +400,34 @@ export default function ProfilePage() {
             } finally {
                 setIsMfaLoading(false);
             }
+        }
+    };
+
+    // --- Account Management Logic ---
+
+    const handleDeleteAccount = async () => {
+        setAccountLoading(true);
+        setManagementError(null);
+        try {
+            await api.delete("/users", {
+                data: {
+                    password: deletePassword,
+                    mfaToken: deleteMfaToken
+                }
+            });
+            toast({
+                title: "Account Deleted",
+                description: "Your profile and associated data have been permanently removed.",
+            });
+            setTimeout(() => {
+                sessionStorage.clear();
+                localStorage.clear();
+                window.location.href = "/";
+            }, 2000);
+        } catch (error: any) {
+            setManagementError(error.response?.data?.message || "Failed to delete account");
+        } finally {
+            setAccountLoading(false);
         }
     };
 
@@ -459,11 +496,12 @@ export default function ProfilePage() {
                     </Card>
 
                     <Tabs defaultValue="personal" className="w-full animate-slide-up" style={{ animationDelay: "100ms" }}>
-                        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-4 h-auto">
+                        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-4 h-auto">
                             <TabsTrigger value="personal">Personal Info</TabsTrigger>
                             <TabsTrigger value="security">Security</TabsTrigger>
                             <TabsTrigger value="kyc">Verification</TabsTrigger>
                             <TabsTrigger value="wallet">Wallet</TabsTrigger>
+                            <TabsTrigger value="management">Account</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="personal">
@@ -783,6 +821,132 @@ export default function ProfilePage() {
                                             <li>Securely sign transactions on the blockchain.</li>
                                             <li>Prove ownership of your tokenized assets.</li>
                                         </ul>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <TabsContent value="management">
+                            <Card className="border-destructive/20 overflow-hidden">
+                                <CardHeader className="bg-destructive/5">
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="h-5 w-5 text-destructive" />
+                                        <CardTitle className="text-destructive uppercase tracking-widest text-sm font-bold">Account Management</CardTitle>
+                                    </div>
+                                    <CardDescription>
+                                        Highly sensitive actions that affect your record integrity.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="pt-6 space-y-6">
+
+                                    {/* Deletion Card */}
+                                    <div className="flex flex-col md:flex-row items-center justify-between p-4 border rounded-lg bg-card shadow-sm gap-4 border-destructive/10 transition-all hover:border-destructive/30">
+                                        <div className="space-y-1 text-center md:text-left flex-1">
+                                            <h4 className="font-bold text-destructive">Delete Account Permanently</h4>
+                                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                                Completely wipe your personal record from the system. Audit trails will persist, but all your personal data (KYC, Wallet, Sessions) will be destroyed.
+                                            </p>
+                                        </div>
+                                        <Dialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+                                            setIsDeleteDialogOpen(open);
+                                            if (!open) {
+                                                setDeleteStep('confirm');
+                                                setDeletePassword("");
+                                                setDeleteMfaToken("");
+                                                setManagementError(null);
+                                            }
+                                        }}>
+                                            <DialogTrigger asChild>
+                                                <Button variant="destructive" className="w-full md:w-auto shadow-sm group">
+                                                    <Trash2 className="h-4 w-4 mr-2 group-hover:animate-bounce" />
+                                                    Delete Account
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="max-w-md">
+                                                <DialogHeader>
+                                                    <DialogTitle className="text-destructive flex items-center gap-2">
+                                                        <AlertTriangle className="h-5 w-5" />
+                                                        Final Warning: Permanent Deletion
+                                                    </DialogTitle>
+                                                    <DialogDescription className="font-medium text-foreground py-2">
+                                                        This is a destructive action that cannot be reversed.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+
+                                                {managementError && (
+                                                    <Alert variant="destructive" className="animate-shake">
+                                                        <XCircle className="h-4 w-4" />
+                                                        <AlertTitle>Action Blocked</AlertTitle>
+                                                        <AlertDescription>{managementError}</AlertDescription>
+                                                    </Alert>
+                                                )}
+
+                                                <div className="space-y-4 py-4 border-y my-2 border-border/50">
+                                                    {deleteStep === 'confirm' ? (
+                                                        <div className="space-y-4">
+                                                            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                                                <ul className="text-xs text-destructive list-disc list-inside space-y-1">
+                                                                    <li>Your KYC data will be permanently wiped.</li>
+                                                                    <li>All wallet connections will be severed.</li>
+                                                                    <li>Uninvested balance in your wallet may be lost.</li>
+                                                                    <li>Historical audit logs will be marked as "Deleted User".</li>
+                                                                </ul>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label htmlFor="delete-pwd">Confirm with Password</Label>
+                                                                <Input
+                                                                    id="delete-pwd"
+                                                                    type="password"
+                                                                    placeholder="Enter your current password"
+                                                                    value={deletePassword}
+                                                                    onChange={(e) => setDeletePassword(e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                            <div className="text-center space-y-2">
+                                                                <Shield className="h-10 w-10 text-primary mx-auto mb-2" />
+                                                                <h4 className="font-semibold">MFA Required</h4>
+                                                                <p className="text-sm text-muted-foreground px-4">
+                                                                    Please enter the 6-digit code from your authenticator app to authorize this deletion.
+                                                                </p>
+                                                            </div>
+                                                            <Input
+                                                                type="text"
+                                                                placeholder="000 000"
+                                                                maxLength={6}
+                                                                className="text-center font-mono text-xl tracking-[0.5em]"
+                                                                value={deleteMfaToken}
+                                                                onChange={(e) => setDeleteMfaToken(e.target.value)}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <DialogFooter>
+                                                    <Button variant="ghost" onClick={() => setIsDeleteDialogOpen(false)}>Abort</Button>
+                                                    {deleteStep === 'confirm' ? (
+                                                        <Button
+                                                            variant="destructive"
+                                                            disabled={!deletePassword || accountLoading}
+                                                            onClick={() => (user as any)?.mfa_setting?.is_enabled ? setDeleteStep('verify') : handleDeleteAccount()}
+                                                        >
+                                                            Continue to {(user as any)?.mfa_setting?.is_enabled ? 'Verification' : 'Deletion'}
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="destructive"
+                                                            disabled={deleteMfaToken.length !== 6 || accountLoading}
+                                                            onClick={handleDeleteAccount}
+                                                        >
+                                                            {accountLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                            Confirm Wipe
+                                                        </Button>
+                                                    )}
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
                                     </div>
                                 </CardContent>
                             </Card>

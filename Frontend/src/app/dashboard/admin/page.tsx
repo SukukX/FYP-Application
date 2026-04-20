@@ -89,7 +89,7 @@ export default function AdminDashboard() {
         setIsSubmitting(true);
         try {
             await api.post("/admin/regulators/approve", { userId: selectedRequest.user_id });
-            toast({ title: "Regulator Approved", description: `${selectedRequest.user?.name} is now verified.` });
+            toast({ title: "Regulator Authorized", description: `${selectedRequest.name} is now active.` });
             setRegulatorModalOpen(false);
             fetchAdminData();
         } catch (error: any) {
@@ -104,7 +104,7 @@ export default function AdminDashboard() {
         setIsSubmitting(true);
         try {
             await api.post("/admin/regulators/reject", { userId: selectedRequest.user_id, reason: rejectReason });
-            toast({ title: "Regulator Rejected", variant: "destructive" });
+            toast({ title: "Application Declined", description: "The candidate account has been removed.", variant: "destructive" });
             setRegulatorModalOpen(false);
             setRejectReason("");
             fetchAdminData();
@@ -262,9 +262,14 @@ export default function AdminDashboard() {
                                         <TableBody>
                                             {data.queue.map((req: any) => (
                                                 <TableRow key={req.user_id}>
-                                                    <TableCell className="font-semibold">{req.user?.name}</TableCell>
-                                                    <TableCell className="text-muted-foreground">{req.user?.email}</TableCell>
-                                                    <TableCell>{new Date(req.submitted_at).toLocaleDateString()}</TableCell>
+                                                    <TableCell className="font-semibold flex items-center gap-2">
+                                                        {req.name}
+                                                        {req.is_resubmitted && (
+                                                            <Badge className="bg-accent/10 text-accent border-accent/20 text-[10px] animate-pulse">RESUBMITTED</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-muted-foreground">{req.email}</TableCell>
+                                                    <TableCell>{new Date(req.created_at).toLocaleDateString()}</TableCell>
                                                     <TableCell className="text-right">
                                                         <Button
                                                             size="sm"
@@ -272,7 +277,7 @@ export default function AdminDashboard() {
                                                             className="hover:bg-accent/10 border-accent/20"
                                                             onClick={() => { setSelectedRequest(req); setRegulatorModalOpen(true); }}
                                                         >
-                                                            <Eye className="h-4 w-4 mr-2" /> Review Identity
+                                                            <Eye className="h-4 w-4 mr-2" /> Inspect Candidate
                                                         </Button>
                                                     </TableCell>
                                                 </TableRow>
@@ -323,28 +328,36 @@ export default function AdminDashboard() {
                                                 <TableCell>
                                                     <Badge variant="secondary" className="capitalize text-[10px]">{u.role}</Badge>
                                                 </TableCell>
-                                                <TableCell>
+                                                 <TableCell>
                                                     {u.is_active ? (
                                                         <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
                                                     ) : (
-                                                        <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-500/20">Banned</Badge>
+                                                        u.role === 'regulator' ? (
+                                                            <Badge variant="destructive" className="bg-orange-500/10 text-orange-600 border-orange-500/20 whitespace-nowrap">
+                                                                Deactivated until Admin approval
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-500/20">Banned</Badge>
+                                                        )
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString()}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button
-                                                        size="sm"
-                                                        variant={u.is_active ? "destructive" : "default"}
-                                                        className={u.is_active ? "h-8 px-2" : "h-8 px-2 bg-green-600 hover:bg-green-700"}
-                                                        onClick={() => toggleUserStatus(u.user_id, u.is_active)}
-                                                        disabled={isSubmitting || u.role === 'admin'}
-                                                    >
-                                                        {u.is_active ? (
-                                                            <><Ban className="w-3 h-3 mr-1" /> Deactivate</>
-                                                        ) : (
-                                                            <><UserCheck className="w-3 h-3 mr-1" /> Restore</>
-                                                        )}
-                                                    </Button>
+                                                 <TableCell className="text-right">
+                                                    {u.role === 'regulator' && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant={u.is_active ? "destructive" : "default"}
+                                                            className={u.is_active ? "h-8 px-2" : "h-8 px-2 bg-green-600 hover:bg-green-700"}
+                                                            onClick={() => toggleUserStatus(u.user_id, u.is_active)}
+                                                            disabled={isSubmitting}
+                                                        >
+                                                            {u.is_active ? (
+                                                                <><Ban className="w-3 h-3 mr-1" /> Deactivate</>
+                                                            ) : (
+                                                                <><UserCheck className="w-3 h-3 mr-1" /> Approve & Restore</>
+                                                            )}
+                                                        </Button>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -425,7 +438,7 @@ export default function AdminDashboard() {
                                                             {log.user?.name?.[0] || 'S'}
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-sm font-semibold text-primary">{log.user?.name || "System"}</span>
+                                                            <span className="text-sm font-semibold text-primary">{log.user?.name || (log.actorRole ? "Deleted User" : "System")}</span>
                                                             <span className="text-[10px] text-muted-foreground uppercase font-medium tracking-tight">
                                                                 {log.actorRole || "System"}
                                                             </span>
@@ -465,30 +478,25 @@ export default function AdminDashboard() {
                     {selectedRequest && (
                         <div className="space-y-6 py-4">
                             <div className="grid grid-cols-2 gap-4 bg-muted/40 p-4 rounded-lg">
-                                <div><Label className="text-xs text-muted-foreground uppercase">Candidate</Label><p className="font-bold">{selectedRequest.user?.name}</p></div>
-                                <div><Label className="text-xs text-muted-foreground uppercase">Email</Label><p className="font-bold">{selectedRequest.user?.email}</p></div>
-                                <div><Label className="text-xs text-muted-foreground uppercase">CNIC #</Label><p className="font-bold">{selectedRequest.cnic_number}</p></div>
-                                <div><Label className="text-xs text-muted-foreground uppercase">Applied On</Label><p className="font-bold">{new Date(selectedRequest.submitted_at).toLocaleDateString()}</p></div>
+                                <div><Label className="text-xs text-muted-foreground uppercase">Candidate</Label><p className="font-bold">{selectedRequest.name}</p></div>
+                                <div><Label className="text-xs text-muted-foreground uppercase">Email</Label><p className="font-bold">{selectedRequest.email}</p></div>
+                                <div><Label className="text-xs text-muted-foreground uppercase">CNIC #</Label><p className="font-bold">{selectedRequest.cnic || "Not Provided"}</p></div>
+                                <div><Label className="text-xs text-muted-foreground uppercase">Registration Date</Label><p className="font-bold">{new Date(selectedRequest.created_at).toLocaleDateString()}</p></div>
+                                <div className="col-span-2 pt-2"><Label className="text-xs text-muted-foreground uppercase">Date of Birth</Label><p className="font-bold">{selectedRequest.dob ? new Date(selectedRequest.dob).toLocaleDateString() : "Not Provided"}</p></div>
+                                {selectedRequest.rejection_reason && (
+                                    <div className="col-span-2 mt-4 p-3 bg-red-500/5 border border-red-500/10 rounded-lg">
+                                        <Label className="text-[10px] text-red-500 font-bold uppercase block mb-1">Previous Rejection Reason</Label>
+                                        <p className="text-sm text-red-600 italic">"{selectedRequest.rejection_reason}"</p>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="space-y-3">
-                                <Label className="text-sm font-bold">Verification Documents</Label>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2 text-center border p-2 rounded">
-                                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Front Identity</span>
-                                        <img src={getFileUrl(selectedRequest.cnic_front)} className="w-full h-32 object-cover rounded" alt="Front" />
-                                    </div>
-                                    <div className="space-y-2 text-center border p-2 rounded">
-                                        <span className="text-[10px] font-bold text-muted-foreground uppercase">Back Identity</span>
-                                        <img src={getFileUrl(selectedRequest.cnic_back)} className="w-full h-32 object-cover rounded" alt="Back" />
-                                    </div>
-                                    {selectedRequest.face_scan && (
-                                        <div className="col-span-2 text-center py-4 bg-accent/5 rounded-lg border border-accent/10">
-                                            <span className="text-[10px] font-bold text-accent uppercase mb-2 block">Live Face Matching Path</span>
-                                            <img src={getFileUrl(selectedRequest.face_scan)} className="w-32 h-32 mx-auto rounded-full object-cover border-4 border-white shadow-xl" alt="Face" />
-                                        </div>
-                                    )}
-                                </div>
+                            <div className="p-4 bg-accent/5 border border-dashed border-accent/20 rounded-lg text-center space-y-2">
+                                <Shield className="h-8 w-8 text-accent mx-auto" />
+                                <p className="text-sm font-medium text-primary">Direct Administrative Authorization</p>
+                                <p className="text-xs text-muted-foreground px-4">
+                                    Identity document verification is manual. Review the candidate's professional credentials before granting platform-wide regulatory access.
+                                </p>
                             </div>
 
                             <div className="space-y-2 mt-4 pt-4 border-t">
@@ -518,8 +526,8 @@ export default function AdminDashboard() {
                             disabled={isSubmitting}
                             onClick={handleApproveRegulator}
                         >
-                            {isSubmitting ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
-                            Authorize Access
+                            {isSubmitting ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <UserCheck className="w-4 h-4 mr-2" />}
+                            Authorize Official
                         </Button>
                     </DialogFooter>
                 </DialogContent>

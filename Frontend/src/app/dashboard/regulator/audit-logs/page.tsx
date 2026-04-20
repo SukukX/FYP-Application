@@ -254,9 +254,9 @@ export default function AuditLogsPage() {
                                                 <TableCell>
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary border border-primary/5">
-                                                            {log.user?.name?.[0] || 'S'}
+                                                            {log.user?.name?.[0] || (log.actorRole ? 'D' : 'S')}
                                                         </div>
-                                                        <span className="text-sm text-primary font-medium">{log.user?.name || 'System'}</span>
+                                                        <span className="text-sm text-primary font-medium">{log.user?.name || (log.actorRole ? 'Deleted User' : 'System')}</span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-xs text-muted-foreground text-right italic max-w-[200px] truncate" title={log.details?.remarks || log.details?.reason || log.details?.comments || '-'}>

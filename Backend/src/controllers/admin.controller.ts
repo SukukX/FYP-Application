@@ -10,6 +10,7 @@ import { AuthRequest } from "../middleware/auth.middleware";
  */
 
 export const getAdminOverview = async (req: AuthRequest, res: Response) => {
+    // Logic updated to filter out rejected regulators until resubmission
     try {
         const [
             regulatorQueue,
@@ -20,14 +21,37 @@ export const getAdminOverview = async (req: AuthRequest, res: Response) => {
             allProperties,
             recentAuditLogs
         ] = await Promise.all([
-            prisma.kYCRequest.findMany({
-                where: { user: { role: Role.regulator }, status: KYCStatus.pending },
-                include: { user: { select: { name: true, email: true, role: true } } }
+            // Pending Regulators: Inactive users with regulator role who are not rejected OR have resubmitted
+            prisma.user.findMany({
+                where: { 
+                    role: Role.regulator, 
+                    is_active: false,
+                    AND: [
+                        { OR: [{ rejection_reason: null }, { rejection_reason: "" }, { is_resubmitted: true }] },
+                        // Ensure we aren't showing someone who was rejected but the reason was accidentally cleared
+                        // (Usually reason is null or string, but we want to be safe)
+                    ]
+                },
+                select: { 
+                    user_id: true, 
+                    name: true, 
+                    email: true, 
+                    role: true, 
+                    created_at: true, 
+                    cnic: true, 
+                    dob: true,
+                    is_resubmitted: true,
+                    rejection_reason: true 
+                }
             }),
             prisma.user.count(),
             prisma.property.count(),
             prisma.property.aggregate({ _sum: { valuation: true } }),
+            // User Directory: Everyone EXCEPT inactive regulators (who are in the onboarding queue)
             prisma.user.findMany({
+                where: {
+                    NOT: { role: Role.regulator, is_active: false }
+                },
                 select: { user_id: true, name: true, email: true, role: true, is_active: true, created_at: true },
                 orderBy: { created_at: 'desc' },
                 take: 100
@@ -110,33 +134,28 @@ export const approveRegulator = async (req: AuthRequest, res: Response) => {
 
         if (!adminId) return res.status(401).json({ message: "Unauthorized" });
 
-        const kyc = await prisma.kYCRequest.findUnique({
-            where: { user_id: Number(userId) },
-            include: { user: true }
+        const candidate = await prisma.user.findUnique({
+            where: { user_id: Number(userId) }
         });
 
-        if (!kyc || kyc.user.role !== Role.regulator) {
-            return res.status(404).json({ message: "Regulator KYC record not found" });
+        if (!candidate || candidate.role !== Role.regulator) {
+            return res.status(404).json({ message: "Regulator candidate not found" });
         }
 
         await prisma.$transaction([
-            prisma.kYCRequest.update({
+            prisma.user.update({
                 where: { user_id: Number(userId) },
-                data: {
-                    status: KYCStatus.approved,
-                    reviewed_by: adminId,
-                    reviewed_at: new Date()
-                }
+                data: { is_active: true }
             }),
             prisma.auditLog.create({
                 data: {
                     user_id: adminId,
                     actorRole: 'ADMIN',
-                    module: 'KYC',
+                    module: 'USER_MGMT' as any,
                     action: 'APPROVED',
                     targetId: Number(userId),
-                    targetName: kyc.user.name,
-                    details: { comments: 'Admin approved regulator access' }
+                    targetName: candidate.name,
+                    details: { comments: 'Admin authorized regulator access' }
                 }
             }),
             prisma.notification.create({
@@ -162,41 +181,32 @@ export const rejectRegulator = async (req: AuthRequest, res: Response) => {
 
         if (!adminId) return res.status(401).json({ message: "Unauthorized" });
 
-        const kyc = await prisma.kYCRequest.findUnique({
-            where: { user_id: Number(userId) },
-            include: { user: true }
+        const candidate = await prisma.user.findUnique({
+            where: { user_id: Number(userId) }
         });
 
-        if (!kyc || kyc.user.role !== Role.regulator) {
-            return res.status(404).json({ message: "Regulator KYC record not found" });
+        if (!candidate || candidate.role !== Role.regulator) {
+            return res.status(404).json({ message: "Regulator candidate not found" });
         }
 
         await prisma.$transaction([
-            prisma.kYCRequest.update({
+            prisma.user.update({
                 where: { user_id: Number(userId) },
-                data: {
-                    status: KYCStatus.rejected,
-                    reviewed_by: adminId,
-                    reviewed_at: new Date(),
-                    rejection_reason: reason
+                data: { 
+                    is_active: false, 
+                    rejection_reason: reason,
+                    is_resubmitted: false // Reset resubmitted flag on new rejection
                 }
             }),
             prisma.auditLog.create({
                 data: {
                     user_id: adminId,
                     actorRole: 'ADMIN',
-                    module: 'KYC',
+                    module: 'USER_MGMT' as any,
                     action: 'REJECTED',
                     targetId: Number(userId),
-                    targetName: kyc.user.name,
-                    details: { reason }
-                }
-            }),
-            prisma.notification.create({
-                data: {
-                    user_id: Number(userId),
-                    type: "verification",
-                    message: `Your regulator account was rejected. Reason: ${reason}`
+                    targetName: candidate.name,
+                    details: { reason, note: 'Regulator registration rejected' }
                 }
             })
         ]);

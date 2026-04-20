@@ -44,23 +44,10 @@ export class AuthService {
                     phone_number: phone_number?.trim() || null,
                     cnic: validCnic,
                     dob: validDob,
+                    is_active: validRole === Role.regulator ? false : true,
                 },
             });
 
-            // Create KYCRequest if regulator and files provided
-            if (validRole === Role.regulator && (files?.cnic_front || files?.cnic_back)) {
-                await tx.kYCRequest.create({
-                    data: {
-                        user_id: newUser.user_id,
-                        cnic_number: validCnic || "PENDING",
-                        cnic_front: files.cnic_front?.[0]?.path || "",
-                        cnic_back: files.cnic_back?.[0]?.path || "",
-                        face_scan: files.face_scan?.[0]?.path || null,
-                        cnic_expiry: new Date(new Date().setFullYear(new Date().getFullYear() + 5)), // Default 5 years expiry for reg initialization
-                        status: "pending"
-                    }
-                });
-            }
 
             return newUser;
         });
@@ -90,7 +77,7 @@ export class AuthService {
             throw new Error("Invalid credentials");
         }
 
-        if (!user.is_active) {
+        if (!user.is_active && user.role !== Role.regulator) {
             throw new Error("Your account has been deactivated. Please contact support.");
         }
 

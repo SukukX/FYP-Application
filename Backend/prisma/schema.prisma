@@ -20,6 +20,9 @@ model User {
   profile_pic             String?                @db.VarChar(256)
   cnic                    String?                @unique @db.VarChar(15)
   is_active               Boolean                @default(true)
+  rejection_reason        String?                @db.VarChar(512)
+  is_resubmitted          Boolean                @default(false)
+  resubmitted_at          DateTime?
   created_at              DateTime               @default(now())
   updated_at              DateTime               @updatedAt
   fiat_balance            Decimal                @default(100000.00) @db.Decimal(15, 2)
@@ -51,7 +54,7 @@ model Wallet {
   chain_id       Int?
   is_primary     Boolean  @default(false)
   created_at     DateTime @default(now())
-  user           User     @relation(fields: [user_id], references: [user_id])
+  user           User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("wallets")
 }
@@ -63,7 +66,7 @@ model MFASetting {
   secret       String?  @db.VarChar(256)
   backup_codes String[]
   updated_at   DateTime @updatedAt
-  user         User     @relation(fields: [user_id], references: [user_id])
+  user         User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("mfa_settings")
 }
@@ -77,7 +80,7 @@ model Session {
   expires_at    DateTime
   created_at    DateTime @default(now())
   is_valid      Boolean  @default(true)
-  user          User     @relation(fields: [user_id], references: [user_id])
+  user          User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("sessions")
 }
@@ -95,7 +98,7 @@ model KYCRequest {
   reviewed_by      Int?
   submitted_at     DateTime  @default(now())
   reviewed_at      DateTime?
-  user             User      @relation(fields: [user_id], references: [user_id])
+  user             User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("kyc_requests")
 }
@@ -116,7 +119,7 @@ model Property {
   occupancy_status    OccupancyStatus        @default(vacant)
   documents           Document[]
   listing_updates     ListingUpdateRequest[]
-  owner               User                   @relation(fields: [owner_id], references: [user_id])
+  owner               User                   @relation(fields: [owner_id], references: [user_id], onDelete: Cascade)
   rent_payments       RentPayment[]
   sukuks              Sukuk[]
   verification_logs   VerificationLog[]
@@ -135,7 +138,7 @@ model Document {
   verified_by         Int?
   verification_status VerificationStatusDoc @default(pending)
   property            Property              @relation(fields: [property_id], references: [property_id])
-  regulator           User?                 @relation(fields: [verified_by], references: [user_id])
+  regulator           User?                 @relation(fields: [verified_by], references: [user_id], onDelete: SetNull)
 
   @@map("documents")
 }
@@ -170,7 +173,7 @@ model Investment {
   purchase_value Decimal  @db.Decimal(15, 2)
   tx_hash        String?  @db.VarChar(256)
   purchase_date  DateTime @default(now())
-  investor       User     @relation(fields: [investor_id], references: [user_id])
+  investor       User     @relation(fields: [investor_id], references: [user_id], onDelete: Cascade)
   sukuk          Sukuk    @relation(fields: [sukuk_id], references: [sukuk_id])
 
   @@map("investments")
@@ -179,11 +182,11 @@ model Investment {
 model ProfitDistribution {
   distribution_id Int      @id @default(autoincrement())
   sukuk_id        Int
-  investor_id     Int
+  investor_id     Int?
   amount          Decimal  @db.Decimal(15, 2)
   tx_hash         String   @db.VarChar(256)
   distributed_at  DateTime @default(now())
-  investor        User     @relation(fields: [investor_id], references: [user_id])
+  investor        User?     @relation(fields: [investor_id], references: [user_id], onDelete: SetNull)
   sukuk           Sukuk    @relation(fields: [sukuk_id], references: [sukuk_id])
 
   @@map("profit_distributions")
@@ -209,10 +212,10 @@ model TokenPriceHistory {
   sukuk_id       Int
   old_price      Decimal  @db.Decimal(15, 4)
   new_price      Decimal  @db.Decimal(15, 4)
-  changed_by     Int
+  changed_by     Int?
   change_reason  String?
   effective_date DateTime @default(now())
-  user           User     @relation(fields: [changed_by], references: [user_id])
+  user           User?     @relation(fields: [changed_by], references: [user_id], onDelete: SetNull)
   sukuk          Sukuk    @relation(fields: [sukuk_id], references: [sukuk_id])
 
   @@map("token_price_history")
@@ -221,7 +224,7 @@ model TokenPriceHistory {
 model ListingUpdateRequest {
   request_id       Int                @id @default(autoincrement())
   property_id      Int
-  owner_id         Int
+  owner_id         Int?
   field_changed    String             @db.VarChar(50)
   old_value        String
   new_value        String
@@ -231,9 +234,9 @@ model ListingUpdateRequest {
   reviewed_at      DateTime?
   rejection_reason String?
   created_at       DateTime           @default(now())
-  owner            User               @relation("OwnerRequests", fields: [owner_id], references: [user_id])
-  property         Property           @relation(fields: [property_id], references: [property_id])
-  regulator        User?              @relation("RegulatorReviews", fields: [reviewed_by], references: [user_id])
+  owner            User?               @relation("OwnerRequests", fields: [owner_id], references: [user_id], onDelete: SetNull)
+  property         Property           @relation(fields: [property_id], references: [property_id], onDelete: Cascade)
+  regulator        User?              @relation("RegulatorReviews", fields: [reviewed_by], references: [user_id], onDelete: SetNull)
 
   @@map("listing_update_requests")
 }
@@ -241,27 +244,27 @@ model ListingUpdateRequest {
 model VerificationLog {
   log_id       Int                   @id @default(autoincrement())
   property_id  Int
-  regulator_id Int
+  property     Property              @relation(fields: [property_id], references: [property_id], onDelete: Cascade)
+  regulator_id Int?
   status       VerificationStatusLog
   comments     String?
   timestamp    DateTime              @default(now())
-  property     Property              @relation(fields: [property_id], references: [property_id])
-  regulator    User                  @relation(fields: [regulator_id], references: [user_id])
+  regulator    User?                  @relation(fields: [regulator_id], references: [user_id], onDelete: SetNull)
 
   @@map("verification_logs")
 }
 
 model TransactionLog {
   transaction_id Int               @id @default(autoincrement())
-  user_id        Int
+  user_id        Int?
   sukuk_id       Int?
   type           TransactionType
   amount         Decimal           @db.Decimal(15, 2)
   tx_hash        String?           @db.VarChar(256)
   status         TransactionStatus @default(pending)
   timestamp      DateTime          @default(now())
-  sukuk          Sukuk?            @relation(fields: [sukuk_id], references: [sukuk_id])
-  user           User              @relation(fields: [user_id], references: [user_id])
+  sukuk          Sukuk?            @relation(fields: [sukuk_id], references: [sukuk_id], onDelete: SetNull)
+  user           User?              @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
   @@map("transaction_logs")
 }
@@ -270,12 +273,12 @@ model ComplianceRecord {
   compliance_id     Int              @id @default(autoincrement())
   sukuk_id          Int
   rule_applied      String           @db.VarChar(256)
-  verified_by       Int
+  verified_by       Int?
   compliance_status ComplianceStatus @default(pending)
   comments          String?
   timestamp         DateTime         @default(now())
-  sukuk             Sukuk            @relation(fields: [sukuk_id], references: [sukuk_id])
-  regulator         User             @relation(fields: [verified_by], references: [user_id])
+  sukuk             Sukuk            @relation(fields: [sukuk_id], references: [sukuk_id], onDelete: Cascade)
+  regulator         User?             @relation(fields: [verified_by], references: [user_id], onDelete: SetNull)
 
   @@map("compliance_records")
 }
@@ -291,7 +294,7 @@ model AuditLog {
   targetName String?      @db.VarChar(256)
   action     AuditAction  @default(SUBMITTED)
   details    Json?
-  user       User?        @relation(fields: [user_id], references: [user_id])
+  user       User?        @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
   @@index([module])
   @@index([action])
@@ -307,7 +310,7 @@ model Notification {
   type            NotificationType
   is_read         Boolean          @default(false)
   created_at      DateTime         @default(now())
-  user            User             @relation(fields: [user_id], references: [user_id])
+  user            User             @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@map("notifications")
 }
@@ -323,8 +326,8 @@ model SecondaryListing {
   status           SecondaryListingStatus @default(open)
   created_at       DateTime               @default(now())
   updated_at       DateTime               @updatedAt
-  seller           User                   @relation(fields: [seller_id], references: [user_id])
-  sukuk            Sukuk                  @relation(fields: [sukuk_id], references: [sukuk_id])
+  seller           User                   @relation(fields: [seller_id], references: [user_id], onDelete: Cascade)
+  sukuk            Sukuk                  @relation(fields: [sukuk_id], references: [sukuk_id], onDelete: Cascade)
 
   @@map("secondary_listings")
 }

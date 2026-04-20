@@ -12,22 +12,23 @@
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusOverlay } from "@/components/StatusOverlay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { 
-    Shield, 
-    Users, 
-    ClipboardList, 
-    CheckCircle, 
-    XCircle, 
-    AlertCircle, 
-    RefreshCw, 
-    FileCheck, 
-    Loader2 
+import {
+    Shield,
+    Users,
+    ClipboardList,
+    CheckCircle,
+    XCircle,
+    AlertCircle,
+    RefreshCw,
+    FileCheck,
+    Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
@@ -60,9 +61,35 @@ export default function RegulatorDashboard() {
         approvedListings: 0
     });
 
-    const isAuthorized = (user?.role === 'regulator' && user?.kycStatus === 'approved') || user?.role === 'admin';
-    const isPending = user?.role === 'regulator' && user?.kycStatus === 'pending';
-    const isRejected = user?.role === 'regulator' && user?.kycStatus === 'rejected';
+    const handleReapply = async () => {
+        setIsLoading(true);
+        try {
+            await api.post("/users/reapply-onboarding");
+            toast({
+                title: "Application Resubmitted",
+                description: "Your profile has been sent back for administrative review.",
+            });
+            // Refresh local user state by reloading
+            window.location.reload();
+        } catch (error: any) {
+            toast({
+                title: "Resubmission Failed",
+                description: error.response?.data?.message || "Error",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const isActive = user?.is_active === true;
+    const isAuthorized = (user?.role === 'regulator' || user?.role === 'admin') && isActive;
+    
+    // Status flags for inactive regulators
+    // Robust check: check both root-level reason and legacy kyc_request reason
+    const hasRejection = !!(user?.rejection_reason || user?.kyc_request?.rejection_reason);
+    const isActuallyRejected = !isActive && hasRejection;
+    const isActuallyPending = !isActive && !hasRejection;
 
     useEffect(() => {
         if (authLoading) return;
@@ -83,6 +110,7 @@ export default function RegulatorDashboard() {
     }, [isAuthorized, authLoading]);
 
     const fetchDashboardData = async () => {
+        if (!isAuthorized) return; // Exit early if not authorized to prevent unauthorized toasts
         try {
             const res = await api.get("/dashboard/regulator");
             _dashboardCache = { data: res.data, ts: Date.now() }; // Update cache
@@ -91,11 +119,14 @@ export default function RegulatorDashboard() {
             setStats(res.data.stats);
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
-            toast({
-                title: "Error",
-                description: "Failed to load dashboard data",
-                variant: "destructive",
-            });
+            // Only show error toast if authorized but fetch fails
+            if (isAuthorized) {
+                toast({
+                    title: "Error",
+                    description: "Failed to load dashboard data",
+                    variant: "destructive",
+                });
+            }
         } finally {
             setIsLoading(false);
         }
@@ -219,57 +250,33 @@ export default function RegulatorDashboard() {
         <div className="min-h-screen bg-background relative">
             <Navbar />
 
-            {/* KYC Status Overlay */}
+            {/* Onboarding Status Overlay (Only if not authorized) */}
             {!isAuthorized && (
-                <div className="fixed inset-0 top-16 z-40 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
-                    <Card className="relative w-full max-w-md shadow-2xl animate-scale-in border-accent/20">
-                        <CardHeader className="text-center">
-                            <div className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center mb-4 ${isRejected ? 'bg-destructive/10' : 'bg-accent/10'}`}>
-                                {isRejected ? (
-                                    <XCircle className="h-8 w-8 text-destructive" />
-                                ) : (
-                                    <Shield className={`h-8 w-8 text-accent ${isPending ? 'animate-pulse' : ''}`} />
-                                )}
-                            </div>
-                            <CardTitle className="text-2xl">
-                                {isRejected ? "Verification Rejected" : "KYC Approval Pending"}
-                            </CardTitle>
-                            <p className="text-muted-foreground mt-2">
-                                {isRejected 
-                                    ? "Your regulator account application has been rejected by an administrator."
-                                    : "Your regulator account identity verification is currently being reviewed by an administrator."
-                                }
-                            </p>
-                        </CardHeader>
-                        <CardContent className="space-y-4 text-center">
-                            {isRejected ? (
-                                <div className="p-4 bg-destructive/5 border border-destructive/10 rounded-lg text-sm flex items-start gap-3 text-left">
-                                    <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="font-medium text-destructive">Rejection Reason</p>
-                                        <p className="text-muted-foreground">{user?.kyc_request?.rejection_reason || "No details provided."}</p>
-                                        <p className="text-xs mt-2 font-medium">Please contact support to appeal or correct your information.</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-muted rounded-lg text-sm flex items-start gap-3 text-left">
-                                    <AlertCircle className="h-5 w-5 text-accent shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="font-medium text-primary">Limited Access</p>
-                                        <p className="text-muted-foreground">You will gain full access to verify listings and KYC requests once your account is approved.</p>
-                                    </div>
-                                </div>
-                            )}
-                            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
-                                <RefreshCw className="mr-2 h-4 w-4" /> Check Status
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
+                isActuallyRejected ? (
+                    <StatusOverlay 
+                        type="rejected"
+                        title="Application Declined"
+                        message="Your regulator application was not approved during the initial review."
+                        details={user?.rejection_reason || "No reason provided."}
+                        actionText="Re-apply for Approval"
+                        onAction={handleReapply}
+                    />
+                ) : (
+                    <StatusOverlay 
+                        type="pending"
+                        title="Awaiting Approval"
+                        message="Your regulator account has been created and is currently awaiting administrative review."
+                        details="Access is restricted until an administrator verifies your account. You will gain full access once your account is activated by an Admin."
+                        actionText="Refresh Status"
+                    />
+                )
             )}
 
-            <div className={`container mx-auto px-4 py-8 ${(!isAuthorized && !isLoading) ? 'pointer-events-none' : ''}`}>
+            <div className={`container mx-auto px-4 py-8 transition-all duration-500 ${
+                (!isAuthorized && !isLoading) 
+                    ? 'pointer-events-none blur-md opacity-40 grayscale-[50%]' 
+                    : ''
+            }`}>
                 <div className="mb-8 animate-fade-in">
                     <h1 className="text-4xl font-bold text-primary mb-2">Regulator Dashboard</h1>
                     <p className="text-muted-foreground">Verify KYC documents and approve property listings</p>

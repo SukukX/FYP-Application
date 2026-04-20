@@ -64,11 +64,10 @@ export default function UnifiedDashboard() {
                         {common.alerts.map((alert: any, idx: number) => (
                             <div
                                 key={idx}
-                                className={`p-4 rounded-lg border ${
-                                    alert.type === 'error'
+                                className={`p-4 rounded-lg border ${alert.type === 'error'
                                         ? 'bg-destructive/10 border-destructive/20 text-destructive'
                                         : 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400'
-                                }`}
+                                    }`}
                             >
                                 <h4 className="font-bold text-sm mb-1">{alert.title || "Notice"}</h4>
                                 <p className="text-sm">{alert.message}</p>

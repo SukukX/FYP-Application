@@ -9,7 +9,7 @@
  * - API Integration (POST /api/auth/register).
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
-import { Users, Shield, Camera, Upload, Check, X } from "lucide-react";
+import { Users, Shield, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
-import Webcam from "react-webcam";
 
 type UserRole = "user" | "regulator";
 
@@ -37,15 +36,8 @@ export default function Register() {
         cnic: "",
     });
     
-    // Regulator-specific file state
-    const [cnicFront, setCnicFront] = useState<File | null>(null);
-    const [cnicBack, setCnicBack] = useState<File | null>(null);
-    const [faceScan, setFaceScan] = useState<File | null>(null);
-    const [scanning, setScanning] = useState<"front" | "back" | "face" | null>(null);
-    
     const router = useRouter();
     const { toast } = useToast();
-    const webcamRef = useRef<Webcam>(null);
 
     const handleRoleSelect = (role: UserRole) => {
         setSelectedRole(role);
@@ -54,20 +46,6 @@ export default function Register() {
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
 
-    const capture = useCallback(async (mode: "front" | "back" | "face") => {
-        const imageSrc = webcamRef.current?.getScreenshot();
-        if (!imageSrc) return;
-
-        const res = await fetch(imageSrc);
-        const blob = await res.blob();
-        const file = new File([blob], `${mode}_scan.jpg`, { type: "image/jpeg" });
-
-        if (mode === "front") setCnicFront(file);
-        else if (mode === "back") setCnicBack(file);
-        else if (mode === "face") setFaceScan(file);
-        
-        setScanning(null);
-    }, [webcamRef]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -85,12 +63,6 @@ export default function Register() {
             return;
         }
 
-        // Regulator validation
-        if (selectedRole === "regulator" && (!cnicFront || !cnicBack)) {
-            toast({ title: "Documents Required", description: "Please provide CNIC front and back images", variant: "destructive" });
-            setIsLoading(false);
-            return;
-        }
 
         try {
             const data = new FormData();
@@ -101,10 +73,6 @@ export default function Register() {
             data.append("phone_number", formData.phone_number);
             data.append("cnic", formData.cnic);
             data.append("dob", formData.dob);
-            
-            if (cnicFront) data.append("cnic_front", cnicFront);
-            if (cnicBack) data.append("cnic_back", cnicBack);
-            if (faceScan) data.append("face_scan", faceScan);
 
             const res = await api.post("/auth/register", data, {
                 headers: { "Content-Type": "multipart/form-data" }
@@ -130,35 +98,6 @@ export default function Register() {
         }
     };
 
-    const DocField = ({ label, mode, currentFile, setFile }: any) => (
-        <div className="space-y-2">
-            <Label>{label}{mode === "face" ? " (Optional)" : " *"}</Label>
-            {currentFile && (
-                <div className="flex items-center gap-2 text-xs text-green-600 mb-2">
-                    <Check className="h-3 w-3" /> {currentFile.name} selected
-                    <button className="text-muted-foreground hover:text-destructive" onClick={() => setFile(null)}>
-                        <X className="h-3 w-3" />
-                    </button>
-                </div>
-            )}
-            <div className="flex gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setScanning(mode)}>
-                    <Camera className="mr-2 h-4 w-4" /> Scan
-                </Button>
-                <div className="relative flex-1">
-                    <Input
-                        type="file"
-                        accept="image/*"
-                        className="opacity-0 absolute inset-0 cursor-pointer"
-                        onChange={(e) => e.target.files && setFile(e.target.files[0])}
-                    />
-                    <Button type="button" variant="secondary" className="w-full pointer-events-none">
-                        <Upload className="mr-2 h-4 w-4" /> Upload
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
 
     if (!selectedRole) {
         return (
@@ -295,35 +234,6 @@ export default function Register() {
                                     />
                                 </div>
 
-                                {selectedRole === "regulator" && (
-                                    <div className="pt-4 border-t space-y-4">
-                                        <h3 className="font-semibold text-primary">Identity Documents</h3>
-                                        {scanning ? (
-                                            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-                                                <Webcam
-                                                    audio={false}
-                                                    ref={webcamRef}
-                                                    screenshotFormat="image/jpeg"
-                                                    className="w-full h-full object-cover"
-                                                />
-                                                <div className="absolute bottom-4 flex justify-center gap-2 w-full">
-                                                    <Button type="button" variant="destructive" size="sm" onClick={() => setScanning(null)}>
-                                                        Cancel
-                                                    </Button>
-                                                    <Button type="button" size="sm" onClick={() => capture(scanning)}>
-                                                        Capture
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <DocField label="CNIC Front" mode="front" currentFile={cnicFront} setFile={setCnicFront} />
-                                                <DocField label="CNIC Back" mode="back" currentFile={cnicBack} setFile={setCnicBack} />
-                                                <DocField label="Face Scan" mode="face" currentFile={faceScan} setFile={setFaceScan} />
-                                            </>
-                                        )}
-                                    </div>
-                                )}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="password">Password *</Label>
@@ -347,7 +257,7 @@ export default function Register() {
                                     />
                                 </div>
 
-                                <Button type="submit" className="w-full" disabled={isLoading || !!scanning}>
+                                <Button type="submit" className="w-full" disabled={isLoading}>
                                     {isLoading ? "Creating Account..." : "Create Account"}
                                 </Button>
 

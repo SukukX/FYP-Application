@@ -9,6 +9,7 @@ import * as QRCode from "qrcode";
 
 /**
  * [ACTION] Get Profile
+ * Updated with robust onboarding state tracking.
  */
 export const getProfile = async (req: AuthRequest, res: Response) => {
     try {
@@ -30,6 +31,9 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
                 address: true,
                 dob: true,
                 profile_pic: true,
+                is_active: true,
+                rejection_reason: true,
+                is_resubmitted: true,
                 kyc_request: {
                     select: {
                         status: true,
@@ -401,6 +405,167 @@ export const toggleMFA = async (req: AuthRequest, res: Response) => {
         res.json(mfa);
     } catch (error) {
         console.error("Toggle MFA Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * [ACTION] Deactivate Profile
+ */
+export const deactivateProfile = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.user_id;
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        // --- Guard: Ownership Check ---
+        const properties = await prisma.property.findMany({
+            where: { owner_id: userId },
+            include: { sukuks: { include: { investments: true } } }
+        });
+
+        for (const property of properties) {
+            for (const sukuk of property.sukuks) {
+                // If any investment exists from SOMEONE ELSE
+                const externalInv = sukuk.investments.find(inv => inv.investor_id !== userId);
+                if (externalInv) {
+                    res.status(400).json({ 
+                        message: "Cannot deactivate: You have active properties with external investors. Please ensure all properties are settled before deactivating." 
+                    });
+                    return;
+                }
+            }
+        }
+
+        // Deactivate User
+        await prisma.user.update({
+            where: { user_id: userId },
+            data: { is_active: false }
+        });
+
+        // Invalidate all sessions
+        await prisma.session.deleteMany({ where: { user_id: userId } });
+
+        res.json({ message: "Account deactivated successfully." });
+    } catch (error) {
+        console.error("Deactivate Profile Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * [ACTION] Delete Profile (Permanent)
+ */
+export const deleteProfile = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.user_id;
+        const { password, mfaToken } = req.body;
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { user_id: userId },
+            include: { mfa_setting: true }
+        });
+
+        if (!user) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        // --- Security Check: Password ---
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            res.status(400).json({ message: "Incorrect password verification." });
+            return;
+        }
+
+        // --- Security Check: MFA ---
+        if (user.mfa_setting?.is_enabled) {
+            if (!mfaToken) {
+                res.status(400).json({ message: "MFA Token required for deletion." });
+                return;
+            }
+            const mfaVerified = speakeasy.totp.verify({
+                secret: user.mfa_setting.secret!,
+                encoding: "base32",
+                token: mfaToken
+            });
+            if (!mfaVerified) {
+                res.status(400).json({ message: "Invalid MFA Code." });
+                return;
+            }
+        }
+
+        // --- Guard: Ownership Check ---
+        const properties = await prisma.property.findMany({
+            where: { owner_id: userId },
+            include: { sukuks: { include: { investments: true } } }
+        });
+
+        for (const property of properties) {
+            for (const sukuk of property.sukuks) {
+                const externalInv = sukuk.investments.find(inv => inv.investor_id !== userId);
+                if (externalInv) {
+                    res.status(400).json({ 
+                        message: "Cannot delete account: You have active properties with external investors." 
+                    });
+                    return;
+                }
+            }
+        }
+
+        // --- Execute Permanent Deletion ---
+        // Cascading rules in Prisma handle related records like Investments, Wallets, etc.
+        // Audit logs, verification logs, etc. persist via SetNull.
+        await prisma.user.delete({
+            where: { user_id: userId }
+        });
+
+        res.json({ message: "Account permanently deleted. All your personal data has been removed." });
+    } catch (error) {
+        console.error("Delete Profile Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * [ACTION] Re-apply for Regulator Onboarding
+ */
+export const reapplyOnboarding = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.user_id;
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { user_id: userId }
+        });
+
+        if (!user || user.role !== "regulator") {
+            res.status(400).json({ message: "Action only available for regulators" });
+            return;
+        }
+
+        await prisma.user.update({
+            where: { user_id: userId },
+            data: {
+                is_resubmitted: true,
+                resubmitted_at: new Date(),
+                rejection_reason: null // Clear reason on re-submit
+            }
+        });
+
+        res.json({ message: "Application resubmitted successfully" });
+    } catch (error) {
+        console.error("Reapply Onboarding Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

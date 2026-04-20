@@ -17,7 +17,11 @@ import {
     // Security Routes
     generateMFASetup,
     verifyMFASetup,
-    toggleMFA
+    toggleMFA,
+    // Account Management
+    deactivateProfile,
+    deleteProfile,
+    reapplyOnboarding
 } from "../controllers/user.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { upload } from "../controllers/kyc.controller"; // Reusing upload config
@@ -38,5 +42,12 @@ router.put("/mfa", authenticate, toggleMFA); // For disabling only
 // Wallet Routes
 router.post("/wallet", authenticate, connectWallet);
 router.delete("/wallet/:walletAddress", authenticate, disconnectWallet);
+
+// Account Management Routes
+router.post("/deactivate", authenticate, deactivateProfile);
+router.delete("/", authenticate, deleteProfile);
+
+// Onboarding Routes
+router.post("/reapply-onboarding", authenticate, reapplyOnboarding);
 
 export default router;
