@@ -410,6 +410,7 @@ enum ComplianceStatus {
 enum AuditModule {
   KYC
   PROPERTY
+  USER_MGMT
 }
 
 enum AuditAction {

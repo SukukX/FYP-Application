@@ -15,8 +15,11 @@ const authService = new AuthService();
  */
 export const register = async (req: Request, res: Response) => {
     try {
-        // console.log("Register Request Body:", req.body);
-        const result = await authService.register(req.body);
+        // Pass both body and files to the service
+        const result = await authService.register({
+            ...req.body,
+            files: (req as any).files
+        });
         res.status(201).json(result);
     } catch (error: any) {
         // console.error("Register Error:", error);

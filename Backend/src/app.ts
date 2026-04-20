@@ -31,6 +31,7 @@ import rentRoutes from "./routes/rent.routes";
 import priceRoutes from "./routes/price.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import exchangeRoutes from "./routes/exchange.routes";
+import adminRoutes from "./routes/admin.routes";
 
 const app = express();
 
@@ -54,5 +55,6 @@ app.use("/api/rent", rentRoutes);
 app.use("/api/prices", priceRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/exchange",exchangeRoutes);
+app.use("/api/admin", adminRoutes);
 
 export default app;

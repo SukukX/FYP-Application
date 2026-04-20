@@ -9,7 +9,7 @@
  * - API Integration (POST /api/auth/register).
  */
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
-import { Users, Shield } from "lucide-react";
+import { Users, Shield, Camera, Upload, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+import Webcam from "react-webcam";
 
 type UserRole = "user" | "regulator";
 
@@ -35,8 +36,16 @@ export default function Register() {
         dob: "",
         cnic: "",
     });
+    
+    // Regulator-specific file state
+    const [cnicFront, setCnicFront] = useState<File | null>(null);
+    const [cnicBack, setCnicBack] = useState<File | null>(null);
+    const [faceScan, setFaceScan] = useState<File | null>(null);
+    const [scanning, setScanning] = useState<"front" | "back" | "face" | null>(null);
+    
     const router = useRouter();
     const { toast } = useToast();
+    const webcamRef = useRef<Webcam>(null);
 
     const handleRoleSelect = (role: UserRole) => {
         setSelectedRole(role);
@@ -45,58 +54,71 @@ export default function Register() {
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
 
-    /**
-     * [ACTION] Handle Registration
-     * Flow:
-     * 1. Validate Form (PW Match, Role Selected).
-     * 2. Call API.
-     * 3. On Success: Log in immediately -> Redirect.
-     */
+    const capture = useCallback(async (mode: "front" | "back" | "face") => {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (!imageSrc) return;
+
+        const res = await fetch(imageSrc);
+        const blob = await res.blob();
+        const file = new File([blob], `${mode}_scan.jpg`, { type: "image/jpeg" });
+
+        if (mode === "front") setCnicFront(file);
+        else if (mode === "back") setCnicBack(file);
+        else if (mode === "face") setFaceScan(file);
+        
+        setScanning(null);
+    }, [webcamRef]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
-        // Client-side validation
         if (!selectedRole) {
-            toast({
-                title: "Role Required",
-                description: "Please select your account type",
-                variant: "destructive",
-            });
+            toast({ title: "Role Required", description: "Please select your account type", variant: "destructive" });
             setIsLoading(false);
             return;
         }
 
         if (formData.password !== formData.confirmPassword) {
-            toast({
-                title: "Password Mismatch",
-                description: "Passwords do not match",
-                variant: "destructive",
-            });
+            toast({ title: "Password Mismatch", description: "Passwords do not match", variant: "destructive" });
+            setIsLoading(false);
+            return;
+        }
+
+        // Regulator validation
+        if (selectedRole === "regulator" && (!cnicFront || !cnicBack)) {
+            toast({ title: "Documents Required", description: "Please provide CNIC front and back images", variant: "destructive" });
             setIsLoading(false);
             return;
         }
 
         try {
-            const res = await api.post("/auth/register", {
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                role: selectedRole,
-                phone_number: formData.phone_number,
-                cnic: formData.cnic,
-                dob: formData.dob,
-            });
-            const { token, user } = res.data;
+            const data = new FormData();
+            data.append("name", formData.name);
+            data.append("email", formData.email);
+            data.append("password", formData.password);
+            data.append("role", selectedRole);
+            data.append("phone_number", formData.phone_number);
+            data.append("cnic", formData.cnic);
+            data.append("dob", formData.dob);
+            
+            if (cnicFront) data.append("cnic_front", cnicFront);
+            if (cnicBack) data.append("cnic_back", cnicBack);
+            if (faceScan) data.append("face_scan", faceScan);
 
+            const res = await api.post("/auth/register", data, {
+                headers: { "Content-Type": "multipart/form-data" }
+            });
+            
+            const { token, user } = res.data;
             login(token, user);
 
             toast({
                 title: "Account Created",
-                description: "Your account has been created successfully.",
+                description: selectedRole === 'regulator' 
+                    ? "Your account is created and awaiting admin approval."
+                    : "Your account has been created successfully.",
             });
-
-            // Redirect is handled by AuthContext
         } catch (error: any) {
             toast({
                 title: "Registration Failed",
@@ -107,6 +129,36 @@ export default function Register() {
             setIsLoading(false);
         }
     };
+
+    const DocField = ({ label, mode, currentFile, setFile }: any) => (
+        <div className="space-y-2">
+            <Label>{label}{mode === "face" ? " (Optional)" : " *"}</Label>
+            {currentFile && (
+                <div className="flex items-center gap-2 text-xs text-green-600 mb-2">
+                    <Check className="h-3 w-3" /> {currentFile.name} selected
+                    <button className="text-muted-foreground hover:text-destructive" onClick={() => setFile(null)}>
+                        <X className="h-3 w-3" />
+                    </button>
+                </div>
+            )}
+            <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setScanning(mode)}>
+                    <Camera className="mr-2 h-4 w-4" /> Scan
+                </Button>
+                <div className="relative flex-1">
+                    <Input
+                        type="file"
+                        accept="image/*"
+                        className="opacity-0 absolute inset-0 cursor-pointer"
+                        onChange={(e) => e.target.files && setFile(e.target.files[0])}
+                    />
+                    <Button type="button" variant="secondary" className="w-full pointer-events-none">
+                        <Upload className="mr-2 h-4 w-4" /> Upload
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
 
     if (!selectedRole) {
         return (
@@ -179,9 +231,9 @@ export default function Register() {
     }
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background pb-12">
             <Navbar />
-            <div className="container mx-auto px-4 py-16">
+            <div className="container mx-auto px-4 py-8">
                 <div className="max-w-md mx-auto">
                     <Card className="animate-scale-in">
                         <CardHeader>
@@ -243,6 +295,36 @@ export default function Register() {
                                     />
                                 </div>
 
+                                {selectedRole === "regulator" && (
+                                    <div className="pt-4 border-t space-y-4">
+                                        <h3 className="font-semibold text-primary">Identity Documents</h3>
+                                        {scanning ? (
+                                            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+                                                <Webcam
+                                                    audio={false}
+                                                    ref={webcamRef}
+                                                    screenshotFormat="image/jpeg"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute bottom-4 flex justify-center gap-2 w-full">
+                                                    <Button type="button" variant="destructive" size="sm" onClick={() => setScanning(null)}>
+                                                        Cancel
+                                                    </Button>
+                                                    <Button type="button" size="sm" onClick={() => capture(scanning)}>
+                                                        Capture
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <DocField label="CNIC Front" mode="front" currentFile={cnicFront} setFile={setCnicFront} />
+                                                <DocField label="CNIC Back" mode="back" currentFile={cnicBack} setFile={setCnicBack} />
+                                                <DocField label="Face Scan" mode="face" currentFile={faceScan} setFile={setFaceScan} />
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label htmlFor="password">Password *</Label>
                                     <Input
@@ -252,9 +334,6 @@ export default function Register() {
                                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                         required
                                     />
-                                    <p className="text-xs text-muted-foreground">
-                                        Min 12 characters, 1 uppercase, 1 lowercase, 1 number, 1 special character
-                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
@@ -268,7 +347,7 @@ export default function Register() {
                                     />
                                 </div>
 
-                                <Button type="submit" className="w-full" disabled={isLoading}>
+                                <Button type="submit" className="w-full" disabled={isLoading || !!scanning}>
                                     {isLoading ? "Creating Account..." : "Create Account"}
                                 </Button>
 
@@ -281,15 +360,6 @@ export default function Register() {
                                     Change Role
                                 </Button>
                             </form>
-
-                            <div className="mt-6 text-center">
-                                <p className="text-sm text-muted-foreground">
-                                    Already have an account?{" "}
-                                    <Link href="/auth/login" className="text-accent hover:underline font-medium">
-                                        Login here
-                                    </Link>
-                                </p>
-                            </div>
                         </CardContent>
                     </Card>
                 </div>

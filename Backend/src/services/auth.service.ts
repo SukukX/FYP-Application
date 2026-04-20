@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 export class AuthService {
     async register(data: any) {
-        const { name, email, password, phone_number, cnic, role, dob } = data;
+        const { name, email, password, phone_number, cnic, role, dob, files } = data;
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -34,19 +34,44 @@ export class AuthService {
             }
         }
 
-        const user = await prisma.user.create({
-            data: {
-                name,
-                email,
-                password: hashedPassword,
-                role: validRole,
-                phone_number: phone_number?.trim() || null,
-                cnic: validCnic,
-                dob: validDob,
-            },
+        const user = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    name,
+                    email,
+                    password: hashedPassword,
+                    role: validRole,
+                    phone_number: phone_number?.trim() || null,
+                    cnic: validCnic,
+                    dob: validDob,
+                },
+            });
+
+            // Create KYCRequest if regulator and files provided
+            if (validRole === Role.regulator && (files?.cnic_front || files?.cnic_back)) {
+                await tx.kYCRequest.create({
+                    data: {
+                        user_id: newUser.user_id,
+                        cnic_number: validCnic || "PENDING",
+                        cnic_front: files.cnic_front?.[0]?.path || "",
+                        cnic_back: files.cnic_back?.[0]?.path || "",
+                        face_scan: files.face_scan?.[0]?.path || null,
+                        cnic_expiry: new Date(new Date().setFullYear(new Date().getFullYear() + 5)), // Default 5 years expiry for reg initialization
+                        status: "pending"
+                    }
+                });
+            }
+
+            return newUser;
         });
 
-        return this.generateToken(user);
+        // Re-fetch user with KYC request for token generation
+        const userWithKyc = await prisma.user.findUnique({
+            where: { user_id: user.user_id },
+            include: { kyc_request: true }
+        });
+
+        return this.generateToken(userWithKyc);
     }
 
     async login(data: any) {
@@ -63,6 +88,10 @@ export class AuthService {
 
         if (!user) {
             throw new Error("Invalid credentials");
+        }
+
+        if (!user.is_active) {
+            throw new Error("Your account has been deactivated. Please contact support.");
         }
 
         const isMatch = await bcrypt.compare(password, user.password);

@@ -8,11 +8,20 @@ import { Router } from "express";
  * - Security: Generates JWT tokens for session management.
  */
 import { register, login } from "../controllers/auth.controller";
+import { upload } from "../controllers/kyc.controller";
 
 const router = Router();
 
 // Public Routes (No Auth Required)
-router.post("/register", register);
+router.post(
+    "/register",
+    upload.fields([
+        { name: "cnic_front", maxCount: 1 },
+        { name: "cnic_back", maxCount: 1 },
+        { name: "face_scan", maxCount: 1 },
+    ]),
+    register
+);
 router.post("/login", login);
 
 export default router;

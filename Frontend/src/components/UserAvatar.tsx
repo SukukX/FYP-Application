@@ -23,7 +23,9 @@ export const UserAvatar = () => {
   };
 
   const getDashboardPath = () => {
-    return `/dashboard`;
+    if (user.role === "regulator") return "/dashboard/regulator";
+    if (user.role === "admin") return "/dashboard/admin";
+    return "/dashboard";
   };
 
   return (

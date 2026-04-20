@@ -33,6 +33,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
                 kyc_request: {
                     select: {
                         status: true,
+                        rejection_reason: true,
                     },
                 },
                 mfa_setting: {

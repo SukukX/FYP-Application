@@ -36,7 +36,8 @@ export default function UnifiedDashboard() {
     useEffect(() => {
         if (authLoading) return;
         if (!user) return router.push("/auth/login");
-        if (user.role === 'regulator' || user.role === 'admin') return router.push("/dashboard/regulator");
+        if (user.role === 'regulator') return router.push("/dashboard/regulator");
+        if (user.role === 'admin') return router.push("/dashboard/admin");
         fetchDashboard();
     }, [user, authLoading, router, fetchDashboard]);
 

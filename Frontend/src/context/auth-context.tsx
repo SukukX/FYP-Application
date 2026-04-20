@@ -17,6 +17,7 @@ interface User {
     profile_pic?: string;
     kyc_request?: {
         status: string;
+        rejection_reason?: string;
     };
     created_at?: string | Date;
     kycStatus?: string; // Legacy or alternative
@@ -81,6 +82,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push("/dashboard");
         } else if (role === "regulator") {
             router.push("/dashboard/regulator");
+        } else if (role === "admin") {
+            router.push("/dashboard/admin");
         } else {
             router.push("/dashboard");
         }
