@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Wallet, Building2, Shield, ArrowRightLeft, Loader2, Clock, XCircle, RefreshCw, ChevronRight } from "lucide-react";
+import { TrendingUp, Wallet, Building2, Shield, ArrowRightLeft, Loader2, Clock, XCircle, RefreshCw, ChevronRight, Banknote } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip as PieTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as AreaTooltip } from "recharts";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export default function InvestorPanel({ investorData, commonData, onRefresh }: { investorData: any, commonData: any, onRefresh: () => void }) {
 
-    const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0 };
+    const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0, totalYieldEarned: 0 };
     const portfolio = investorData?.portfolio || [];
     const investments = investorData?.investments || [];
     const holdings = investorData?.holdings || [];
@@ -148,7 +148,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                 </Badge>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            {/* <div className="grid md:grid-cols-3 gap-6">
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Total Portfolio Value</CardTitle>
@@ -180,8 +180,57 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                         <p className="text-xs text-muted-foreground mt-1">Browse marketplace</p>
                     </CardContent>
                 </Card>
-            </div>
+            </div> */}
 
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Portfolio Value</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-primary">PKR {stats.totalInvestment.toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {stats.totalInvestment > 0 ? "Across your portfolio" : "No holdings yet"}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Properties Owned</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-primary">{stats.propertiesOwned}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Start investing today</p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Tokens</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-primary">{stats.totalTokens}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Browse marketplace</p>
+                    </CardContent>
+                </Card>
+
+                {/* NEW: Yield Earned Card */}
+                <Card className="border-green-500/20 bg-green-50/10 dark:bg-green-900/5">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                            <Banknote className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            Total Yield Earned
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                            PKR {(stats.totalYieldEarned || 0).toLocaleString()}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Passive income from rent</p>
+                    </CardContent>
+                </Card>
+            </div>
             {/* Area Chart & Recent Additions - Restored from User's Backup */}
             <div className="grid lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-2 overflow-hidden">

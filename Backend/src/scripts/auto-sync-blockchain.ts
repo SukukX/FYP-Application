@@ -112,15 +112,19 @@ async function autoSyncBlockchain() {
             if (parseFloat(onChainBal) === 0 && inv.tokens_owned > 0) {
                 console.log(`   🔗 Restoring ${inv.tokens_owned} tokens for ${inv.investor.name}...`);
                 
-                // FIX: Passing the actual owner wallet address instead of 'null'
-                await blockchainService.transferTokens(
-                    partitionName,
-                    ownerWalletObj.wallet_address, 
-                    investorWallet,
-                    inv.tokens_owned.toString()
-                );
-                console.log(`      ✅ Restored.`);
-                await delay(1000);
+                try {
+                    await blockchainService.transferTokens(
+                        partitionName,
+                        ownerWalletObj.wallet_address, 
+                        investorWallet,
+                        inv.tokens_owned.toString()
+                    );
+                    console.log(`      ✅ Restored.`);
+                } catch (transferErr: any) {
+                    console.log(`      ⚠️  Could not restore tokens for ${inv.investor.name}: ${transferErr.shortMessage || transferErr.message}`);
+                }
+                
+                await delay(2000); // 🟢 Increased delay to 2 seconds to let the local chain breathe
             }
         }
 

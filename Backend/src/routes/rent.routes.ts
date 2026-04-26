@@ -1,19 +1,22 @@
 import { Router } from "express";
-import { collectRentCallback } from "../controllers/rent.controller";
+import { distributeRent, submitRent } from "../controllers/rent.controller";
 import { authenticate, authorize } from "../middleware/auth.middleware";
 
 const router = Router();
 
+
 /**
- * [ROUTE] Rent Management
- * Use Case: Owner logs a rent payment (or system auto-deducts).
+ * @route   POST /api/rent/submit
+ * @desc    Submit a new rent payment (Property Owner)
+ * @access  Private (Owner)
  */
+router.post("/submit", authenticate, submitRent);
 
-router.post(
-    "/collect",
-    authenticate,
-    authorize(["owner", "admin"]), // Only Owner or Admin can trigger rent collection
-    collectRentCallback
-);
-
+/**
+ * @route   POST /api/rent/distribute
+ * @desc    Distribute rent for a specific property (Admin only)
+ * @access  Private (Admin)
+ * @body    { propertyId: number, totalRent: number, periodStart: string, periodEnd: string }
+ */
+router.post("/distribute", authenticate, authorize(["admin"]), distributeRent);
 export default router;

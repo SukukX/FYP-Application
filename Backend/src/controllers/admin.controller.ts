@@ -23,8 +23,8 @@ export const getAdminOverview = async (req: AuthRequest, res: Response) => {
         ] = await Promise.all([
             // Pending Regulators: Inactive users with regulator role who are not rejected OR have resubmitted
             prisma.user.findMany({
-                where: { 
-                    role: Role.regulator, 
+                where: {
+                    role: Role.regulator,
                     is_active: false,
                     AND: [
                         { OR: [{ rejection_reason: null }, { rejection_reason: "" }, { is_resubmitted: true }] },
@@ -32,16 +32,16 @@ export const getAdminOverview = async (req: AuthRequest, res: Response) => {
                         // (Usually reason is null or string, but we want to be safe)
                     ]
                 },
-                select: { 
-                    user_id: true, 
-                    name: true, 
-                    email: true, 
-                    role: true, 
-                    created_at: true, 
-                    cnic: true, 
+                select: {
+                    user_id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    created_at: true,
+                    cnic: true,
                     dob: true,
                     is_resubmitted: true,
-                    rejection_reason: true 
+                    rejection_reason: true
                 }
             }),
             prisma.user.count(),
@@ -68,6 +68,12 @@ export const getAdminOverview = async (req: AuthRequest, res: Response) => {
             })
         ]);
 
+        const pendingRents = await prisma.rentPayment.findMany({
+            where: { distributed_at: null },
+            include: { property: { select: { title: true } } },
+            orderBy: { created_at: 'asc' }
+        });
+
         res.json({
             queue: regulatorQueue,
             stats: {
@@ -77,7 +83,8 @@ export const getAdminOverview = async (req: AuthRequest, res: Response) => {
             },
             users: allUsers,
             properties: allProperties,
-            logs: recentAuditLogs
+            logs: recentAuditLogs,
+            pendingRents
         });
     } catch (error) {
         console.error("Admin Overview Error:", error);
@@ -117,7 +124,7 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
             }
         });
 
-        res.json({ 
+        res.json({
             message: `User ${updatedUser.is_active ? 'activated' : 'deactivated'} successfully`,
             user: { user_id: updatedUser.user_id, is_active: updatedUser.is_active }
         });
@@ -192,8 +199,8 @@ export const rejectRegulator = async (req: AuthRequest, res: Response) => {
         await prisma.$transaction([
             prisma.user.update({
                 where: { user_id: Number(userId) },
-                data: { 
-                    is_active: false, 
+                data: {
+                    is_active: false,
                     rejection_reason: reason,
                     is_resubmitted: false // Reset resubmitted flag on new rejection
                 }

@@ -8,13 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Building2, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink, Wallet, XCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Building2, Shield, Clock, Lock, CheckCircle, ArrowRight, ArrowLeft, AlertCircle, FileText, ExternalLink, Wallet, XCircle, RefreshCw, Loader2, Banknote } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { KYCWizard } from "@/components/KYCWizard";
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -37,11 +38,19 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
     const [selectedRejection, setSelectedRejection] = useState<any>(null);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
     const [walletAddress, setWalletAddress] = useState("");
-    
+
     // Resubmission State
     const [resubmitPropertyId, setResubmitPropertyId] = useState<number | null>(null);
     const [resubmitFiles, setResubmitFiles] = useState<{ images: File[], docs: File[] }>({ images: [], docs: [] });
     const [isResubmitting, setIsResubmitting] = useState(false);
+
+
+    // Rent Submission State
+    const [rentModalOpen, setRentModalOpen] = useState(false);
+    const [selectedRentProperty, setSelectedRentProperty] = useState<any>(null);
+    const [rentForm, setRentForm] = useState({ amount: "", periodStart: "", periodEnd: "" });
+    const [isSubmittingRent, setIsSubmittingRent] = useState(false);
+
 
     const router = useRouter();
     const { toast } = useToast();
@@ -93,7 +102,7 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
 
             setListingModalOpen(false); setCurrentStep(1); setFiles({ images: [], docs: [] });
             setListingData({ title: "", address: "", propertyType: "residential", description: "", valuation: "", totalTokens: "", tokensForSale: "", pricePerToken: "" });
-            onRefresh(); 
+            onRefresh();
         } catch (error: any) {
             toast({ title: "Submission Failed", description: error.response?.data?.message || "Failed to submit listing", variant: "destructive" });
         } finally {
@@ -141,6 +150,42 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
             setIsResubmitting(false);
         }
     };
+
+
+    const handleSubmitRent = async () => {
+        if (!rentForm.amount || !rentForm.periodStart || !rentForm.periodEnd) {
+            toast({ title: "Incomplete Information", description: "Please fill in all rent details.", variant: "destructive" });
+            return;
+        }
+
+        setIsSubmittingRent(true);
+        try {
+            await api.post("/rent/submit", {
+                propertyId: selectedRentProperty.property_id,
+                amount: rentForm.amount,
+                periodStart: rentForm.periodStart,
+                periodEnd: rentForm.periodEnd
+            });
+
+            toast({
+                title: "Rent Submitted",
+                description: "Rent payment is now pending Admin verification."
+            });
+
+            setRentModalOpen(false);
+            setRentForm({ amount: "", periodStart: "", periodEnd: "" });
+            onRefresh();
+        } catch (error: any) {
+            toast({
+                title: "Submission Failed",
+                description: error.response?.data?.message || "Failed to submit rent",
+                variant: "destructive"
+            });
+        } finally {
+            setIsSubmittingRent(false);
+        }
+    };
+
 
     return (
         <div className="space-y-8 animate-fade-in pb-12">
@@ -274,6 +319,19 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                                                 {(listing.listing_status === 'active' || listing.verification_status === 'rejected') && (
                                                     <>
                                                         <Link href={`/marketplace/${listing.property_id}`} className="flex-1"><Button variant="outline" size="sm" className="w-full">{listing.listing_status === 'active' ? 'View Listing' : 'View Details'}</Button></Link>
+                                                        {listing.listing_status === 'active' && (
+                                                            <Button
+                                                                variant="default"
+                                                                size="sm"
+                                                                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                                                onClick={() => {
+                                                                    setSelectedRentProperty(listing);
+                                                                    setRentModalOpen(true);
+                                                                }}
+                                                            >
+                                                                <Banknote className="w-4 h-4 mr-1" /> Submit Rent
+                                                            </Button>
+                                                        )}
                                                         {listing.listing_status === 'active' && (<Button variant="outline" size="sm" className="flex-1 border-destructive text-destructive hover:bg-destructive/10" onClick={async () => { if (confirm("Are you sure you want to unlive this listing?")) { try { await api.patch(`/properties/${listing.property_id}/status`, { status: "hidden" }); toast({ title: "Success", description: "Listing is now hidden." }); onRefresh(); } catch (e: any) { toast({ title: "Action Failed", description: e.response?.data?.message || "Failed to unlive listing", variant: "destructive" }); } } }}>Unlive</Button>)}
                                                     </>
                                                 )}
@@ -430,6 +488,68 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                     <DialogHeader><DialogTitle>Connect Your Wallet</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="walletAddress">Ethereum Wallet Address</Label><Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." /></div><p className="text-sm text-muted-foreground">Enter your Ethereum wallet address to receive proceeds from token sales.</p></div>
                     <DialogFooter><Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button><Button onClick={handleWalletConnect}>Connect Wallet</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+
+            {/* Rent Submission Modal */}
+            <Dialog open={rentModalOpen} onOpenChange={(open) => {
+                setRentModalOpen(open);
+                if (!open) setRentForm({ amount: "", periodStart: "", periodEnd: "" });
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Banknote className="h-5 w-5 text-green-600" />
+                            Submit Monthly Rent
+                        </DialogTitle>
+                        <DialogDescription>
+                            Submit the collected rent for {selectedRentProperty?.title}. This will be held in pending status until an Admin verifies the funds.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="rentAmount">Rent Amount (PKR)</Label>
+                            <Input 
+                                id="rentAmount" 
+                                type="number" 
+                                placeholder="e.g., 50000" 
+                                value={rentForm.amount}
+                                onChange={(e) => setRentForm({...rentForm, amount: e.target.value})}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="periodStart">Period Start</Label>
+                                <Input 
+                                    id="periodStart" 
+                                    type="date" 
+                                    value={rentForm.periodStart}
+                                    onChange={(e) => setRentForm({...rentForm, periodStart: e.target.value})}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="periodEnd">Period End</Label>
+                                <Input 
+                                    id="periodEnd" 
+                                    type="date" 
+                                    value={rentForm.periodEnd}
+                                    onChange={(e) => setRentForm({...rentForm, periodEnd: e.target.value})}
+                                />
+                            </div>
+                        </div>
+                        <div className="p-3 bg-muted rounded-md text-xs text-muted-foreground">
+                            Note: The platform automatically deducts a 2% management fee from the gross rent before distributing the net yield to token holders.
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRentModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSubmitRent} disabled={isSubmittingRent} className="bg-green-600 hover:bg-green-700">
+                            {isSubmittingRent ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : "Submit Rent"}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

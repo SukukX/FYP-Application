@@ -159,6 +159,14 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             }
         });
 
+        const yieldData = await prisma.profitDistribution.aggregate({
+            where: { investor_id: userId },
+            _sum: { amount: true }
+        });
+        
+        // Ensure it resolves to a number, defaulting to 0 if they haven't received any rent yet
+        const totalYieldEarned = yieldData._sum.amount ? Number(yieldData._sum.amount) : 0;
+
         let totalInvestment = 0;
         let totalTokens = 0;
         const propertySet = new Set();
@@ -256,7 +264,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 rejectedProperties
             },
             investorData: {
-                stats: { totalInvestment, totalTokens, propertiesOwned: propertySet.size, totalProfitEarned: 0 },
+                stats: { totalInvestment, totalTokens, propertiesOwned: propertySet.size, totalYieldEarned },
                 portfolio,
                 investments,
                 holdings

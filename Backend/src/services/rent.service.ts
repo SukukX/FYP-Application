@@ -1,131 +1,123 @@
 import prisma from '../config/prisma';
-import { TransactionType, TransactionStatus } from '@prisma/client';
-
-
-/**
- * [SERVICE] Rent Distribution
- * Purpose: Handles the logic for collecting rent and distributing it to token holders.
- */
+import { TransactionType, TransactionStatus, AuditModule, AuditAction, ActorRole } from '@prisma/client';
 
 interface RentDistributionResult {
     rentId: number;
-    totalAmount: number;
+    grossAmount: number;
+    netDistributed: number;
+    platformFee: number;
     beneficiaries: number;
-    distributedAmount: number;
 }
 
 /**
- * Collects rent for a property and distributes it to investors.
- * @param propertyId The ID of the property.
- * @param amount The total rent amount collected.
- * @param periodStart Start date of the rent period.
- * @param periodEnd End date of the rent period.
- * @param isOwnerOccupied Whether the owner is the one "paying" (occupying).
+ * [SERVICE] Execute Rent Distribution (The Engine)
+ * Purpose: Takes an approved pending rent ID and safely distributes the funds.
  */
-export const distributeRent = async (
-    propertyId: number,
-    amount: number,
-    periodStart: Date,
-    periodEnd: Date,
-    isOwnerOccupied: boolean = false
+export const executeRentDistribution = async (
+    rentId: number,
+    adminId: number,
+    ipAddress?: string
 ): Promise<RentDistributionResult> => {
 
-    // 1. Fetch Property & Sukuk
-    const property = await prisma.property.findUnique({
-        where: { property_id: propertyId },
-        include: { sukuks: true }
+    // 1. Fetch Pending Record
+    const rentRecord = await prisma.rentPayment.findUnique({
+        where: { rent_id: rentId },
+        include: { property: { include: { sukuks: { where: { status: "active" } } } } }
     });
 
-    if (!property) throw new Error("Property not found");
+    if (!rentRecord) throw new Error("Rent record not found.");
+    if (rentRecord.distributed_at !== null) throw new Error("Idempotency Alert: Rent already distributed.");
+
+    const property = rentRecord.property;
+    if (!property.sukuks || property.sukuks.length === 0) throw new Error("No active Sukuk found.");
+
     const sukuk = property.sukuks[0];
-    if (!sukuk) throw new Error("No active Sukuk found for this property");
+    const grossRent = Number(rentRecord.amount);
 
-    // 2. Fetch Eligible Investors (Token Holders > 0)
-    // We include the Owner if they hold tokens (Inventory)
+    // 2. The Snapshot
     const investments = await prisma.investment.findMany({
-        where: {
-            sukuk_id: sukuk.sukuk_id,
-            tokens_owned: { gt: 0 }
-        },
-        include: { investor: true }
+        where: { sukuk_id: sukuk.sukuk_id }
     });
 
-    if (investments.length === 0) {
-        throw new Error("No token holders found to distribute rent to.");
-    }
+    if (investments.length === 0) throw new Error("No investors found.");
 
-    const totalTokens = investments.reduce((sum, inv) => sum + inv.tokens_owned, 0);
+    // 3. Strict Math
+    const platformFee = grossRent * 0.02; // 2% Admin Fee
+    const netRent = grossRent - platformFee;
+    const yieldPerToken = netRent / sukuk.total_tokens;
 
-    // Safety check: Total tokens should match Sukuk total, but we use the actual sum of held tokens to be safe.
-    // If tokens are burned or lost, we only distribute to current holders.
-    if (totalTokens === 0) throw new Error("Total tokens held is zero.");
+    let totalDistributed = 0;
 
-    // 3. Calculate Distribution Rate
-    // Rent per Token = Total Rent / Total Tokens
-    const rentPerToken = amount / totalTokens;
-
-    // 4. Perform Transaction (Atomic)
-    let distributedAmount = 0;
-
+    // 4. Atomic Transaction
     await prisma.$transaction(async (tx) => {
-        // A. Record Rent Payment
-        const rentPayment = await tx.rentPayment.create({
-            data: {
-                property_id: propertyId,
-                amount: amount,
-                payment_date: new Date(),
-                period_start: periodStart,
-                period_end: periodEnd,
-                is_owner_occupied: isOwnerOccupied,
-                distributed_at: new Date() // Mark as distributed immediately
-            }
+        // Lock record
+        await tx.rentPayment.update({
+            where: { rent_id: rentRecord.rent_id },
+            data: { distributed_at: new Date() }
         });
 
-        // B. Distribute to Each Investor
+        // Distribute to wallets
         for (const inv of investments) {
-            const share = inv.tokens_owned * rentPerToken;
+            const exactPayout = Math.floor((inv.tokens_owned * yieldPerToken) * 100) / 100;
 
-            if (share > 0) {
-                // Create Profit Record
+            if (exactPayout > 0) {
+                // THE CRITICAL FIX: Actually give them the money!
+                await tx.user.update({
+                    where: { user_id: inv.investor_id },
+                    data: { fiat_balance: { increment: exactPayout } }
+                });
+
                 await tx.profitDistribution.create({
                     data: {
                         sukuk_id: sukuk.sukuk_id,
                         investor_id: inv.investor_id,
-                        amount: share,
-                        tx_hash: `RENT_DIST_${rentPayment.rent_id}_${inv.investor_id}` // Internal Ref
+                        amount: exactPayout,
+                        tx_hash: `RENT-${rentRecord.rent_id}-INV-${inv.investor_id}`, 
                     }
                 });
 
-                // Log Transaction
                 await tx.transactionLog.create({
                     data: {
                         user_id: inv.investor_id,
                         sukuk_id: sukuk.sukuk_id,
                         type: TransactionType.profit_payout,
-                        amount: share,
+                        amount: exactPayout,
                         status: TransactionStatus.success,
-                        tx_hash: `RENT_DIST_${rentPayment.rent_id}`
                     }
                 });
 
-                // Notify User
                 await tx.notification.create({
                     data: {
                         user_id: inv.investor_id,
                         type: "profit",
-                        message: `You received $${share.toFixed(2)} in rent dividends from ${property.title}.`
+                        message: `🎉 Rent distributed! You received PKR ${exactPayout.toLocaleString()} for ${property.title}.`
                     }
                 });
 
-                distributedAmount += share;
+                totalDistributed += exactPayout;
             }
         }
+
+        // Audit Log
+        await tx.auditLog.create({
+            data: {
+                user_id: adminId,
+                actorRole: ActorRole.ADMIN,
+                module: AuditModule.PROPERTY,
+                action: AuditAction.UPDATED,
+                targetId: property.property_id,
+                targetName: property.title,
+                details: { event: "RENT_DISTRIBUTED", gross_rent: grossRent, net_distributed: totalDistributed },
+                ip_address: ipAddress || null,
+            }
+        });
     });
 
     return {
-        rentId: -1, // We don't return the exact ID from transaction easily without returning it from the callback, but strictly we could.
-        totalAmount: amount,
-        beneficiaries: investments.length,
-        distributedAmount
+        rentId: rentRecord.rent_id,
+        grossAmount: grossRent,
+        netDistributed: totalDistributed,
+        platformFee: platformFee,
+        beneficiaries: investments.length
     };
 };

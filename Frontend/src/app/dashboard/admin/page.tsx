@@ -24,7 +24,8 @@ import {
     Ban,
     UserCheck,
     Building2,
-    Search
+    Search,
+    Banknote
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
@@ -47,10 +48,13 @@ export default function AdminDashboard() {
         stats: { totalUsers: 0, totalProperties: 0, totalValuation: 0 },
         users: [],
         properties: [],
-        logs: []
+        logs: [],
+        pendingRents: []
     });
 
     // Modal States
+    const [rentConfirmModalOpen, setRentConfirmModalOpen] = useState(false);
+    const [selectedRentToApprove, setSelectedRentToApprove] = useState<any>(null);
     const [regulatorModalOpen, setRegulatorModalOpen] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<any>(null);
     const [rejectReason, setRejectReason] = useState("");
@@ -130,6 +134,29 @@ export default function AdminDashboard() {
                 title: "Action Failed",
                 description: error.response?.data?.message || "Error",
                 variant: "destructive",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleApproveRent = async (rentId: number) => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            await api.post("/rent/distribute", { rentId });
+            toast({
+                title: "Rent Distributed",
+                description: "Funds have been successfully calculated and distributed to all token holders."
+            });
+            setRentConfirmModalOpen(false); // Close the modal
+            setSelectedRentToApprove(null); // Clear the selection
+            fetchAdminData();
+        } catch (error: any) {
+            toast({
+                title: "Distribution Failed",
+                description: error.response?.data?.message || "Failed to distribute rent.",
+                variant: "destructive"
             });
         } finally {
             setIsSubmitting(false);
@@ -220,6 +247,7 @@ export default function AdminDashboard() {
                                 { value: "regulators", label: "Regulator Auth", icon: Shield },
                                 { value: "users", label: "User Management", icon: Users },
                                 { value: "properties", label: "Property Monitor", icon: Building2 },
+                                { value: "rent", label: "Rent Clearances", icon: Banknote },
                                 { value: "audit", label: "Audit Trails", icon: ClipboardList }
                             ].map((tab) => (
                                 <TabsTrigger
@@ -328,7 +356,7 @@ export default function AdminDashboard() {
                                                 <TableCell>
                                                     <Badge variant="secondary" className="capitalize text-[10px]">{u.role}</Badge>
                                                 </TableCell>
-                                                 <TableCell>
+                                                <TableCell>
                                                     {u.is_active ? (
                                                         <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
                                                     ) : (
@@ -342,7 +370,7 @@ export default function AdminDashboard() {
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString()}</TableCell>
-                                                 <TableCell className="text-right">
+                                                <TableCell className="text-right">
                                                     {u.role === 'regulator' && (
                                                         <Button
                                                             size="sm"
@@ -395,7 +423,7 @@ export default function AdminDashboard() {
                                                 <TableCell className="text-sm font-medium">PKR {(p.valuation / 1000000).toFixed(1)}M</TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline" className={`capitalize text-[10px] ${p.verification_status === 'approved' ? 'border-green-500 text-green-600 bg-green-50' :
-                                                            p.verification_status === 'pending' ? 'border-orange-500 text-orange-600 bg-orange-50' : ''
+                                                        p.verification_status === 'pending' ? 'border-orange-500 text-orange-600 bg-orange-50' : ''
                                                         }`}>
                                                         {p.verification_status}
                                                     </Badge>
@@ -405,6 +433,69 @@ export default function AdminDashboard() {
                                         ))}
                                     </TableBody>
                                 </Table>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* RENT CLEARANCES TAB */}
+                    <TabsContent value="rent" className="animate-fade-in">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Banknote className="w-5 h-5 text-green-600" />
+                                    Pending Rent Clearances
+                                </CardTitle>
+                                <CardDescription>Verify bank deposits before executing yield distribution.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {!data.pendingRents || data.pendingRents.length === 0 ? (
+                                    <div className="text-center py-16 bg-muted/20 border-2 border-dashed rounded-lg">
+                                        <Banknote className="h-10 w-10 mx-auto text-muted-foreground mb-4 opacity-50" />
+                                        <h3 className="font-semibold text-primary">No Pending Rent</h3>
+                                        <p className="text-sm text-muted-foreground">All property yields have been processed.</p>
+                                    </div>
+                                ) : (
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Property</TableHead>
+                                                <TableHead>Amount (PKR)</TableHead>
+                                                <TableHead>Period</TableHead>
+                                                <TableHead>Submitted On</TableHead>
+                                                <TableHead className="text-right">Execution</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {data.pendingRents.map((rent: any) => (
+                                                <TableRow key={rent.rent_id}>
+                                                    <TableCell className="font-semibold">{rent.property?.title}</TableCell>
+                                                    <TableCell className="font-bold text-green-600">
+                                                        {Number(rent.amount).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell className="text-sm text-muted-foreground">
+                                                        {new Date(rent.period_start).toLocaleDateString()} - {new Date(rent.period_end).toLocaleDateString()}
+                                                    </TableCell>
+                                                    <TableCell className="text-sm">
+                                                        {new Date(rent.created_at).toLocaleDateString()}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-green-600 hover:bg-green-700"
+                                                            onClick={() => {
+                                                                setSelectedRentToApprove(rent);
+                                                                setRentConfirmModalOpen(true);
+                                                            }}
+                                                        >
+                                                            <CheckCircle className="h-4 w-4 mr-2" />
+                                                            Verify & Distribute
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -448,12 +539,12 @@ export default function AdminDashboard() {
                                                 <TableCell><Badge className="bg-primary/5 text-primary text-[10px]">{log.module}</Badge></TableCell>
                                                 <TableCell>
                                                     <span className={`font-bold ${log.action === 'APPROVED' ? 'text-green-600' :
-                                                            log.action === 'REJECTED' ? 'text-red-500' : ''
+                                                        log.action === 'REJECTED' ? 'text-red-500' : ''
                                                         }`}>{log.action}</span>
                                                 </TableCell>
                                                 <TableCell className="font-medium">{log.targetName}</TableCell>
-                                                <TableCell 
-                                                    className="text-right text-muted-foreground italic max-w-[200px] truncate" 
+                                                <TableCell
+                                                    className="text-right text-muted-foreground italic max-w-[200px] truncate"
                                                     title={log.details?.remarks || log.details?.reason || log.details?.comments || log.details?.status || "Platform sync"}
                                                 >
                                                     {log.details?.remarks || log.details?.reason || log.details?.comments || log.details?.status || "Platform sync"}
@@ -528,6 +619,59 @@ export default function AdminDashboard() {
                         >
                             {isSubmitting ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <UserCheck className="w-4 h-4 mr-2" />}
                             Authorize Official
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Rent Execution Confirmation Dialog */}
+            <Dialog open={rentConfirmModalOpen} onOpenChange={setRentConfirmModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-green-600">
+                            <Banknote className="h-5 w-5" />
+                            Execute Rent Distribution
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {selectedRentToApprove && (
+                        <div className="py-4 space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                You are about to initiate the smart distribution for <strong className="text-primary">{selectedRentToApprove.property?.title}</strong>.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-4 bg-muted/40 p-4 rounded-lg">
+                                <div>
+                                    <Label className="text-xs text-muted-foreground uppercase">Gross Rent</Label>
+                                    <p className="font-bold text-lg text-green-600">PKR {Number(selectedRentToApprove.amount).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                    <Label className="text-xs text-muted-foreground uppercase">Rent Period</Label>
+                                    <p className="font-bold text-sm mt-1">
+                                        {new Date(selectedRentToApprove.period_start).toLocaleDateString()} - {new Date(selectedRentToApprove.period_end).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg flex gap-3 items-start">
+                                <AlertCircle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
+                                <div className="text-sm text-orange-700 dark:text-orange-400">
+                                    <strong className="block mb-1">Compliance Check Required</strong>
+                                    Have you verified that these funds have physically cleared and are present in the platform's Master Escrow Bank Account? This blockchain transaction cannot be reversed.
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRentConfirmModalOpen(false)}>Cancel</Button>
+                        <Button
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={isSubmitting}
+                            onClick={() => handleApproveRent(selectedRentToApprove?.rent_id)}
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                            Confirm Execution
                         </Button>
                     </DialogFooter>
                 </DialogContent>
