@@ -83,7 +83,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             orderBy: { created_at: 'desc' },
             include: {
                 sukuks: {
-                    include: { investments: true } 
+                    include: { investments: true }
                 },
                 verification_logs: {
                     orderBy: { timestamp: 'desc' },
@@ -118,7 +118,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 token_price: sukuk ? sukuk.token_price : 0,
             };
         });
-        
+
         const rejectedProperties = properties.filter(p => p.verification_status === 'rejected').map(p => ({
             property_id: p.property_id,
             title: p.title,
@@ -163,7 +163,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             where: { investor_id: userId },
             _sum: { amount: true }
         });
-        
+
         // Ensure it resolves to a number, defaulting to 0 if they haven't received any rent yet
         const totalYieldEarned = yieldData._sum.amount ? Number(yieldData._sum.amount) : 0;
 
@@ -357,7 +357,7 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
                 }
             },
             orderBy: { timestamp: "desc" },
-            take: 200, 
+            take: 200,
         });
 
         res.json({ logs });
