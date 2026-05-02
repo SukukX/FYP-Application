@@ -11,52 +11,77 @@ erDiagram
     USER ||--o{ SESSION : "manages"
     USER ||--o| KYC_REQUEST : "submits"
     USER ||--o{ PROPERTY : "owns"
-    USER ||--o{ DOCUMENT : "verifies (as regulator)"
+    USER ||--o{ DOCUMENT : "verifies (regulator)"
     USER ||--o{ INVESTMENT : "makes"
     USER ||--o{ PROFIT_DISTRIBUTION : "receives"
     USER ||--o{ TOKEN_PRICE_HISTORY : "updates"
-    USER ||--o{ LISTING_UPDATE_REQUEST : "requests/reviews"
-    USER ||--o{ VERIFICATION_LOG : "performs (as regulator)"
+    USER ||--o{ LISTING_UPDATE_REQUEST : "requests (owner)"
+    USER ||--o{ LISTING_UPDATE_REQUEST : "reviews (regulator)"
+    USER ||--o{ VERIFICATION_LOG : "logs (regulator)"
     USER ||--o{ TRANSACTION_LOG : "generates"
-    USER ||--o{ COMPLIANCE_RECORD : "verifies (as regulator)"
-    USER ||--o{ AUDIT_LOG : "is actor of"
+    USER ||--o{ COMPLIANCE_RECORD : "verifies (regulator)"
+    USER ||--o{ AUDIT_LOG : "actor"
     USER ||--o{ NOTIFICATION : "receives"
     USER ||--o{ SECONDARY_LISTING : "sells"
 
     PROPERTY ||--o{ DOCUMENT : "contains"
     PROPERTY ||--o{ LISTING_UPDATE_REQUEST : "has updates"
     PROPERTY ||--o{ RENT_PAYMENT : "generates"
-    PROPERTY ||--o{ SUKUK : "is tokenized as"
-    PROPERTY ||--o{ VERIFICATION_LOG : "has history"
+    PROPERTY ||--o{ SUKUK : "tokenized as"
+    PROPERTY ||--o{ VERIFICATION_LOG : "verification history"
 
-    SUKUK ||--o{ COMPLIANCE_RECORD : "must meet"
-    SUKUK ||--o{ INVESTMENT : "has"
-    SUKUK ||--o{ PROFIT_DISTRIBUTION : "distributes"
-    SUKUK ||--o{ SECONDARY_LISTING : "listed on"
-    SUKUK ||--o{ TOKEN_PRICE_HISTORY : "price changes"
-    SUKUK ||--o{ TRANSACTION_LOG : "logged in"
+    SUKUK ||--o{ COMPLIANCE_RECORD : "compliance checks"
+    SUKUK ||--o{ INVESTMENT : "investments"
+    SUKUK ||--o{ PROFIT_DISTRIBUTION : "distributions"
+    SUKUK ||--o{ SECONDARY_LISTING : "market listings"
+    SUKUK ||--o{ TOKEN_PRICE_HISTORY : "price history"
+    SUKUK ||--o{ TRANSACTION_LOG : "transactions"
 
     USER {
         int user_id PK
         string email UK
+        string name
         string role
+        string phone_number
         decimal fiat_balance
         boolean is_active
+        datetime created_at
+    }
+
+    WALLET {
+        int wallet_id PK
+        int user_id FK
+        string wallet_address UK
+        int chain_id
+        boolean is_primary
+    }
+
+    KYC_REQUEST {
+        int kyc_id PK
+        int user_id FK
+        string cnic_number UK
+        string status
+        datetime submitted_at
     }
 
     PROPERTY {
         int property_id PK
         int owner_id FK
         string title
+        string location
+        string property_type
         decimal valuation
         string verification_status
+        string listing_status
     }
 
     SUKUK {
         int sukuk_id PK
         int property_id FK
         int total_tokens
+        int available_tokens
         decimal token_price
+        decimal yield_percent
         string status
     }
 
@@ -65,12 +90,58 @@ erDiagram
         int investor_id FK
         int sukuk_id FK
         int tokens_owned
+        decimal purchase_value
+        string tx_hash
     }
 
-    KYC_REQUEST {
-        int kyc_id PK
-        int user_id FK
+    DOCUMENT {
+        int document_id PK
+        int property_id FK
+        int verified_by FK
+        string file_name
+        string file_type
+        string verification_status
+    }
+
+    SECONDARY_LISTING {
+        int listing_id PK
+        int seller_id FK
+        int sukuk_id FK
+        int total_tokens
+        decimal price_per_token
         string status
+    }
+
+    PROFIT_DISTRIBUTION {
+        int distribution_id PK
+        int sukuk_id FK
+        int investor_id FK
+        decimal amount
+        datetime distributed_at
+    }
+
+    RENT_PAYMENT {
+        int rent_id PK
+        int property_id FK
+        decimal amount
+        datetime payment_date
+    }
+
+    TRANSACTION_LOG {
+        int transaction_id PK
+        int user_id FK
+        int sukuk_id FK
+        string type
+        decimal amount
+        string status
+    }
+
+    AUDIT_LOG {
+        int log_id PK
+        int user_id FK
+        string module
+        string action
+        json details
     }
 ```
 
