@@ -1,189 +1,239 @@
 # Database Schema Analysis
 
-This document provides a comprehensive analysis of the database schema for the FYP Application, including an ER diagram and detailed descriptions of the models and their relationships.
+This document provides a comprehensive analysis of the database schema for the FYP Application, including a detailed ER diagram and model descriptions.
 
 ## Entity Relationship Diagram
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor': '#ffffff',
+    'primaryTextColor': '#000000',
+    'primaryBorderColor': '#333333',
+    'lineColor': '#444444',
+    'secondaryColor': '#f4f4f4',
+    'tertiaryColor': '#ffffff',
+    'fontFamily': 'inter, sans-serif',
+    'fontSize': '14px'
+  },
+  'er': {
+    'useMaxWidth': false,
+    'layoutDirection': 'TB'
+  }
+}%%
+
 erDiagram
-    USER ||--o{ WALLET : "has"
-    USER ||--o| MFA_SETTING : "configures"
-    USER ||--o{ SESSION : "manages"
-    USER ||--o| KYC_REQUEST : "submits"
-    USER ||--o{ PROPERTY : "owns"
-    USER ||--o{ DOCUMENT : "verifies (regulator)"
-    USER ||--o{ INVESTMENT : "makes"
-    USER ||--o{ PROFIT_DISTRIBUTION : "receives"
-    USER ||--o{ TOKEN_PRICE_HISTORY : "updates"
-    USER ||--o{ LISTING_UPDATE_REQUEST : "requests (owner)"
-    USER ||--o{ LISTING_UPDATE_REQUEST : "reviews (regulator)"
-    USER ||--o{ VERIFICATION_LOG : "logs (regulator)"
-    USER ||--o{ TRANSACTION_LOG : "generates"
-    USER ||--o{ COMPLIANCE_RECORD : "verifies (regulator)"
-    USER ||--o{ AUDIT_LOG : "actor"
-    USER ||--o{ NOTIFICATION : "receives"
-    USER ||--o{ SECONDARY_LISTING : "sells"
+    %% ==========================================
+    %% GROUP 1: 👤 User & Auth (Blue)
+    %% ==========================================
+    User ||--o| MFASetting : "secures"
+    User ||--o{ Session : "starts"
+    User ||--o{ Wallet : "owns"
+    User ||--o{ Notification : "receives"
 
-    PROPERTY ||--o{ DOCUMENT : "contains"
-    PROPERTY ||--o{ LISTING_UPDATE_REQUEST : "has updates"
-    PROPERTY ||--o{ RENT_PAYMENT : "generates"
-    PROPERTY ||--o{ SUKUK : "tokenized as"
-    PROPERTY ||--o{ VERIFICATION_LOG : "verification history"
+    %% ==========================================
+    %% GROUP 2: 📋 KYC & Compliance (Green)
+    %% ==========================================
+    User ||--o| KYCRequest : "submits"
+    User ||--o{ AuditLog : "triggers (Actor)"
+    User ||--o{ VerificationLog : "reviews (Regulator)"
+    User ||--o{ ComplianceRecord : "verifies (Regulator)"
+    
+    %% ==========================================
+    %% GROUP 3: 🏢 Property & Documents (Orange)
+    %% ==========================================
+    User ||--o{ Property : "owns (Owner role)"
+    User ||--o{ Document : "verifies (Regulator role)"
+    User ||--o{ ListingUpdateRequest : "reviews (Regulator role)"
 
-    SUKUK ||--o{ COMPLIANCE_RECORD : "compliance checks"
-    SUKUK ||--o{ INVESTMENT : "investments"
-    SUKUK ||--o{ PROFIT_DISTRIBUTION : "distributions"
-    SUKUK ||--o{ SECONDARY_LISTING : "market listings"
-    SUKUK ||--o{ TOKEN_PRICE_HISTORY : "price history"
-    SUKUK ||--o{ TRANSACTION_LOG : "transactions"
+    Property ||--o{ Document : "contains"
+    Property ||--o{ RentPayment : "collects"
+    Property ||--o{ VerificationLog : "generates history for"
+    Property ||--o{ ListingUpdateRequest : "receives update for"
 
-    USER {
+    %% ==========================================
+    %% GROUP 4: 💰 Tokenization & Finance (Purple)
+    %% ==========================================
+    Property ||--o{ Sukuk : "tokenizes into"
+    Sukuk ||--o{ Investment : "comprises"
+    Sukuk ||--o{ ProfitDistribution : "yields"
+    Sukuk ||--o{ TokenPriceHistory : "tracks price of"
+    Sukuk ||--o{ TransactionLog : "logs (Asset view)"
+    Sukuk ||--o{ ComplianceRecord : "governed by"
+    Sukuk ||--o{ SecondaryListing : "traded in"
+
+    %% User interactions with finance (various roles)
+    User ||--o{ Investment : "made by (Investor role)"
+    User ||--o{ ProfitDistribution : "received by (Investor role)"
+    User ||--o{ TransactionLog : "triggers (Actor role)"
+    User ||--o{ SecondaryListing : "created by (Seller role)"
+    User ||--o{ TokenPriceHistory : "updated by (Admin role)"
+
+    %% =========================================================================
+    %% ENTITY DEFINITIONS & ATTRIBUTES
+    %% =========================================================================
+
+    User {
         int user_id PK
-        string email UK
-        string name
-        string role
-        string phone_number
+        string email "unique"
+        string password
+        enum role "user/admin/regulator"
         decimal fiat_balance
+        string name
         boolean is_active
-        datetime created_at
     }
 
-    WALLET {
+    Wallet {
         int wallet_id PK
-        int user_id FK
-        string wallet_address UK
-        int chain_id
+        int user_id FK "belongs to"
+        string wallet_address "unique"
         boolean is_primary
     }
 
-    KYC_REQUEST {
+    MFASetting {
+        int mfa_id PK
+        int user_id FK "secures (unique)"
+        boolean is_enabled
+        string secret
+        string_array backup_codes
+    }
+
+    Session {
+        string session_id PK "uuid"
+        int user_id FK "for"
+        string refresh_token "unique"
+        boolean is_valid
+        datetime expires_at
+    }
+
+    Notification {
+        int notification_id PK
+        int user_id FK "received by"
+        string message
+        enum type
+        boolean is_read
+    }
+
+    KYCRequest {
         int kyc_id PK
-        int user_id FK
-        string cnic_number UK
-        string status
+        int user_id FK "for (unique)"
+        int reviewed_by FK "optional regulator review"
+        string cnic_number "unique"
+        enum status
         datetime submitted_at
     }
 
-    PROPERTY {
-        int property_id PK
-        int owner_id FK
-        string title
-        string location
-        string property_type
-        decimal valuation
-        string verification_status
-        string listing_status
+    ComplianceRecord {
+        int compliance_id PK
+        int sukuk_id FK "applies to"
+        int verified_by FK "optional regulator review"
+        string rule_applied
+        enum compliance_status
+        datetime timestamp
     }
 
-    SUKUK {
+    VerificationLog {
+        int log_id PK
+        int property_id FK "logs history for"
+        int regulator_id FK "optional reviewer"
+        enum status
+        datetime timestamp
+    }
+
+    AuditLog {
+        int log_id PK
+        int user_id FK "performed by (Actor)"
+        enum action
+        enum module
+        int targetId
+        json details
+    }
+
+    Property {
+        int property_id PK
+        int owner_id FK "owned by (Owner role)"
+        string title
+        string location
+        enum property_type
+        decimal valuation
+        enum listing_status
+        enum verification_status
+    }
+
+    Document {
+        int document_id PK
+        int property_id FK "belongs to"
+        int verified_by FK "optional regulator verify"
+        string file_name
+        string file_hash
+        enum verification_status
+    }
+
+    ListingUpdateRequest {
+        int request_id PK
+        int property_id FK "for asset"
+        int owner_id FK "optional request by"
+        int reviewed_by FK "optional review by"
+        string field_changed
+        enum status
+    }
+
+    RentPayment {
+        int rent_id PK
+        int property_id FK "collected from"
+        decimal amount
+        datetime period_start
+        datetime period_end
+    }
+
+    Sukuk {
         int sukuk_id PK
-        int property_id FK
+        int property_id FK "represents asset"
         int total_tokens
         int available_tokens
         decimal token_price
-        decimal yield_percent
-        string status
+        enum status
     }
 
-    INVESTMENT {
+    Investment {
         int investment_id PK
-        int investor_id FK
-        int sukuk_id FK
+        int investor_id FK "made by"
+        int sukuk_id FK "in"
         int tokens_owned
         decimal purchase_value
-        string tx_hash
     }
 
-    DOCUMENT {
-        int document_id PK
-        int property_id FK
-        int verified_by FK
-        string file_name
-        string file_type
-        string verification_status
-    }
-
-    SECONDARY_LISTING {
-        int listing_id PK
-        int seller_id FK
-        int sukuk_id FK
-        int total_tokens
-        decimal price_per_token
-        string status
-    }
-
-    PROFIT_DISTRIBUTION {
+    ProfitDistribution {
         int distribution_id PK
-        int sukuk_id FK
-        int investor_id FK
+        int sukuk_id FK "yielded by"
+        int investor_id FK "optional recipient"
         decimal amount
-        datetime distributed_at
     }
 
-    RENT_PAYMENT {
-        int rent_id PK
-        int property_id FK
-        decimal amount
-        datetime payment_date
+    TokenPriceHistory {
+        int history_id PK
+        int sukuk_id FK "for"
+        int changed_by FK "optional updater"
+        decimal old_price
+        decimal new_price
     }
 
-    TRANSACTION_LOG {
+    SecondaryListing {
+        int listing_id PK
+        int seller_id FK "created by"
+        int sukuk_id FK "of asset"
+        int available_tokens
+        decimal price_per_token
+        enum status
+    }
+
+    TransactionLog {
         int transaction_id PK
-        int user_id FK
-        int sukuk_id FK
-        string type
+        int user_id FK "triggered by"
+        int sukuk_id FK "involves (optional)"
+        enum type
         decimal amount
-        string status
-    }
-
-    AUDIT_LOG {
-        int log_id PK
-        int user_id FK
-        string module
-        string action
-        json details
+        enum status
     }
 ```
-
-## Core Entities
-
-### 1. User Management
-*   **User**: The central entity representing Investors, Property Owners, Admins, and Regulators. It stores profile information, authentication details, and a `fiat_balance`.
-*   **Wallet**: Stores blockchain wallet addresses associated with a user. Supports multiple wallets per user.
-*   **KYCRequest**: Stores identity verification data and documents for users. It follows a workflow from `pending` to `approved` or `rejected`.
-*   **MFASetting**: Stores Multi-Factor Authentication configuration (TOTP secrets and backup codes).
-*   **Session**: Manages user authentication sessions and refresh tokens.
-
-### 2. Property & Tokenization
-*   **Property**: Represents the real estate assets. Each property is owned by a `User` (Owner) and undergoes a verification process.
-*   **Document**: Stores legal and technical documents related to a property, which are verified by regulators.
-*   **Sukuk**: The tokenized representation of a property. It defines the total supply of tokens, their price, and the projected yield.
-*   **RentPayment**: Tracks rental income generated by properties, which is later distributed to Sukuk holders.
-
-### 3. Investment & Trading
-*   **Investment**: Represents the primary market holdings of an investor in a specific Sukuk.
-*   **SecondaryListing**: Allows investors to sell their Sukuk tokens to other users on a secondary market.
-*   **ProfitDistribution**: Records the payouts made to investors based on their holdings.
-*   **TokenPriceHistory**: Tracks changes in the price of Sukuk tokens over time.
-
-### 4. Governance & Compliance
-*   **ComplianceRecord**: Stores regulatory compliance checks performed on Sukuk issuances.
-*   **ListingUpdateRequest**: A workflow for property owners to request changes to their property listings, subject to regulator approval.
-*   **VerificationLog**: Detailed logs of the property and document verification process.
-*   **AuditLog**: System-wide logs for tracking administrative and regulatory actions for transparency.
-*   **TransactionLog**: Records financial and blockchain transactions for reconciliation and auditing.
-
-## Key Relationships
-
-*   **Property -> Sukuk**: A 1:N relationship where a property is tokenized into a Sukuk issuance.
-*   **User -> Investment <- Sukuk**: A many-to-many relationship tracked via the `Investment` model, representing who owns which tokens.
-*   **User -> Property**: Property owners manage their listings.
-*   **Regulator (User) -> Governance**: Regulators interact with `Document`, `KYCRequest`, `Property`, and `ComplianceRecord` to ensure system integrity.
-
-## Enumerations
-The schema heavily uses Enums to enforce state transitions and roles:
-*   `Role`: user, admin, regulator.
-*   `KYCStatus`: pending, approved, rejected, etc.
-*   `VerificationStatus`: draft, pending, approved, rejected.
-*   `ListingStatus`: active, hidden, sold_out, suspended.
-*   `TransactionType`: buy, sell, profit_payout, etc.
