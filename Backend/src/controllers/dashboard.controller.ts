@@ -6,46 +6,20 @@ import { ethers } from "ethers";
 import { provider } from "../config/blockchain";
 
 
-// [HELPER] Smart Alerts System
-const getCommonAlerts = async (userId: number) => {
+// [HELPER] Build alerts from already-fetched KYC and MFA records (no extra DB calls)
+const buildAlerts = (kyc: { status: string; rejection_reason?: string | null } | null, mfaEnabled: boolean) => {
     const alerts = [];
 
-    const kyc = await prisma.kYCRequest.findUnique({
-        where: { user_id: userId },
-    });
-
     if (!kyc) {
-        alerts.push({
-            type: "warning",
-            message: "Complete your KYC verification to start investing.",
-            action: "/kyc",
-        });
+        alerts.push({ type: "warning", message: "Complete your KYC verification to start investing.", action: "/kyc" });
     } else if (kyc.status === KYCStatus.rejected) {
-        alerts.push({
-            type: "error",
-            title: "KYC Application Rejected",
-            message: kyc.rejection_reason || "Check your documents.",
-            footer: "Please resubmit your application.",
-            action: "/kyc",
-        });
+        alerts.push({ type: "error", title: "KYC Application Rejected", message: kyc.rejection_reason || "Check your documents.", footer: "Please resubmit your application.", action: "/kyc" });
     } else if (kyc.status === KYCStatus.pending) {
-        alerts.push({
-            type: "info",
-            message: "Your KYC is under review.",
-            action: "/kyc",
-        });
+        alerts.push({ type: "info", message: "Your KYC is under review.", action: "/kyc" });
     }
 
-    const mfa = await prisma.mFASetting.findUnique({
-        where: { user_id: userId },
-    });
-
-    if (!mfa || !mfa.is_enabled) {
-        alerts.push({
-            type: "info",
-            message: "Enable 2FA for better security.",
-            action: "/settings/security",
-        });
+    if (!mfaEnabled) {
+        alerts.push({ type: "info", message: "Enable 2FA for better security.", action: "/settings/security" });
     }
 
     return alerts;
@@ -64,16 +38,21 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        // 1. Fetch Common Global Data
-        const alerts = await getCommonAlerts(userId);
-        const wallet = await prisma.wallet.findFirst({
-            where: { user_id: userId, is_primary: true }
-        });
-        const user = await prisma.user.findUnique({
+        // 1. Fetch Common Global Data — single query replacing 5 individual ones
+        const userData = await prisma.user.findUnique({
             where: { user_id: userId },
+            include: {
+                kyc_request: true,
+                mfa_setting: true,
+                wallets: { where: { is_primary: true }, take: 1 }
+            }
         });
-        const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
-        const mfaEnabled = (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false;
+        if (!userData) { res.status(404).json({ message: "User not found" }); return; }
+
+        const kycRecord = userData.kyc_request;
+        const mfaEnabled = userData.mfa_setting?.is_enabled || false;
+        const wallet = userData.wallets[0] || null;
+        const alerts = buildAlerts(kycRecord, mfaEnabled);
 
         // ==========================================
         // 2. Fetch & Calculate OWNER Data
@@ -234,7 +213,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         //         console.error("Failed to fetch wallet balance via ethers:", err);
         //     }
         // }
-        const liveWalletBalance = user?.fiat_balance || 0;
+        const liveWalletBalance = userData?.fiat_balance || 0;
 
 
         res.json({
@@ -288,17 +267,16 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             return;
         }
 
-        const pendingKYC = await prisma.kYCRequest.count({ where: { status: KYCStatus.pending } });
-        const pendingListings = await prisma.property.count({ where: { verification_status: "pending" } });
+        const [pendingKYC, pendingListings, totalUsers, approvedUsers, activeSukuks, approvedListings] = await Promise.all([
+            prisma.kYCRequest.count({ where: { status: KYCStatus.pending } }),
+            prisma.property.count({ where: { verification_status: "pending" } }),
+            prisma.user.count(),
+            prisma.user.count({ where: { role: "user", kyc_request: { status: "approved" } } }),
+            prisma.sukuk.count({ where: { status: "active" } }),
+            prisma.property.count({ where: { verification_status: "approved" } }),
+        ]);
 
-        const stats = {
-            pendingKYC,
-            pendingListings,
-            totalUsers: await prisma.user.count(),
-            approvedUsers: await prisma.user.count({ where: { role: "user", kyc_request: { status: "approved" } } }),
-            activeSukuks: await prisma.sukuk.count({ where: { status: "active" } }),
-            approvedListings: await prisma.property.count({ where: { verification_status: "approved" } }),
-        };
+        const stats = { pendingKYC, pendingListings, totalUsers, approvedUsers, activeSukuks, approvedListings };
 
         // Fetch Queues with is_resubmission flag
         const rawKycQueue = await prisma.kYCRequest.findMany({

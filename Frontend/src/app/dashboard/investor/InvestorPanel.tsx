@@ -14,6 +14,12 @@ import api from "@/lib/api";
 import { KYCWizard } from "@/components/KYCWizard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
+
 export default function InvestorPanel({ investorData, commonData, onRefresh }: { investorData: any, commonData: any, onRefresh: () => void }) {
 
     const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0, totalYieldEarned: 0 };
@@ -28,7 +34,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
-    const [walletAddress, setWalletAddress] = useState("");
+    // const [walletAddress, setWalletAddress] = useState("");
 
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
@@ -64,32 +70,6 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
     const recentHoldings = [...holdings].sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
 
-    const handleWalletConnect = async () => {
-        if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-            toast({
-                title: "Invalid Address",
-                description: "Please enter a valid Ethereum wallet address.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        try {
-            await api.post("/blockchain/wallet", { wallet: walletAddress });
-            toast({
-                title: "Wallet Connected",
-                description: "Your wallet has been successfully connected.",
-            });
-            setWalletModalOpen(false);
-            onRefresh();
-        } catch (error: any) {
-            toast({
-                title: "Connection Failed",
-                description: error.response?.data?.error || "Failed to connect wallet.",
-                variant: "destructive",
-            });
-        }
-    };
 
     // The missing logic to send data to the backend
     const handleCreateListing = async () => {
@@ -114,6 +94,47 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             });
         } finally {
             setIsListing(false);
+        }
+    };
+
+    const handleMetaMaskConnect = async () => {
+        // 1. Check if we are safely on the client side AND if MetaMask is installed
+        if (typeof window !== "undefined" && window.ethereum) {
+            try {
+                // 2. This line pops open the MetaMask extension to ask for permission
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+                
+                // 3. Grab the first account the user selected
+                const metaMaskAddress = accounts[0]; 
+                
+                // 4. Send it to your backend
+                await api.post("/blockchain/wallet", { wallet: metaMaskAddress });
+                
+                toast({
+                    title: "MetaMask Connected",
+                    description: `Successfully linked: ${metaMaskAddress.substring(0, 6)}...`,
+                });
+                
+                setWalletModalOpen(false);
+                onRefresh(); // Refresh the dashboard to show the connected state
+                
+            } catch (error: any) {
+                // The user clicked "Reject" on the MetaMask popup
+                toast({
+                    title: "Connection Failed",
+                    description: error.message || "User rejected the MetaMask request.",
+                    variant: "destructive",
+                });
+            }
+        } else {
+            // MetaMask is not installed in their browser
+            toast({
+                title: "MetaMask Not Found",
+                description: "Please install the MetaMask browser extension to continue.",
+                variant: "destructive",
+            });
         }
     };
 
@@ -483,16 +504,33 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             <KYCWizard open={kycModalOpen} onOpenChange={setKycModalOpen} existingKyc={kycStatus === 'rejected' ? existingKyc : null} onSuccess={() => { onRefresh(); toast({ title: "Submitted", description: "Your KYC was submitted successfully." }); }} />
 
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Connect Your Wallet</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <Label htmlFor="walletAddress">Ethereum Wallet Address</Label>
-                        <Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." />
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-center">Connect Wallet</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Link your Web3 wallet to receive property tokens and rental yields.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                        <div className="h-16 w-16 bg-orange-500/10 rounded-full flex items-center justify-center mb-2">
+                            {/* MetaMask Fox Icon representation */}
+                            <svg className="w-10 h-10 text-orange-500" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                                <path fill="#E2761B" d="M27.4,14.6l-5.3-4.1l3.5-3.2L27.4,14.6z M4.6,14.6l5.3-4.1l-3.5-3.2L4.6,14.6z M22.1,10.5l-3.4,4.9l4.5,2.1L22.1,10.5z M9.9,10.5l3.4,4.9l-4.5,2.1L9.9,10.5z M16,21.5l-3.6-2l-3.6,5.3L16,25.6l7.2-0.8l-3.6-5.3L16,21.5z M16,11.2l-3.5,4.5l3.5,2.3l3.5-2.3L16,11.2z M24.2,19.3l-1.9-4.7l-4.7-2.1l4.4-6.3l5.5,5.5L24.2,19.3z M7.8,19.3l1.9-4.7l4.7-2.1l-4.4-6.3l-5.5,5.5L7.8,19.3z" />
+                            </svg>
+                        </div>
+                        
+                        <Button 
+                            onClick={handleMetaMaskConnect} 
+                            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg h-12"
+                        >
+                            Connect with MetaMask
+                        </Button>
+                        
+                        <p className="text-xs text-muted-foreground text-center px-4 mt-4">
+                            By connecting a wallet, you agree to our platform's Terms of Service and consent to blockchain interaction.
+                        </p>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleWalletConnect}>Connect</Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

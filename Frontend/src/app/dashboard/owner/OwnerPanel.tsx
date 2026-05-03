@@ -1,5 +1,11 @@
 "use client";
 import { useState } from "react";
+
+declare global {
+    interface Window {
+        ethereum?: any;
+    }
+}
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +19,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
+import Image from "next/image";
 import { getFileUrl } from "@/lib/utils";
 import { KYCWizard } from "@/components/KYCWizard";
 
@@ -121,7 +128,24 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
         try { await api.patch(`/properties/${propertyId}/supply`, { available_tokens: supply }); toast({ title: "Success", description: "Token supply updated." }); onRefresh(); } catch (e: any) { toast({ title: "Error", description: e.response?.data?.message || "Failed to update supply", variant: "destructive" }); }
     };
 
-    const handleWalletConnect = async () => {
+    const handleMetaMaskConnect = async () => {
+        if (typeof window !== "undefined" && window.ethereum) {
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const metaMaskAddress = accounts[0];
+                await api.post("/blockchain/wallet", { wallet: metaMaskAddress });
+                toast({ title: "MetaMask Connected", description: `Successfully linked: ${metaMaskAddress.substring(0, 6)}...` });
+                setWalletModalOpen(false);
+                onRefresh();
+            } catch (error: any) {
+                toast({ title: "Connection Failed", description: error.message || "User rejected the MetaMask request.", variant: "destructive" });
+            }
+        } else {
+            toast({ title: "MetaMask Not Found", description: "Please install the MetaMask browser extension to continue.", variant: "destructive" });
+        }
+    };
+
+    const handleManualWalletConnect = async () => {
         if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) { toast({ title: "Invalid Address", description: "Please enter a valid Ethereum wallet address.", variant: "destructive" }); return; }
         try { await api.post("/blockchain/wallet", { wallet: walletAddress }); toast({ title: "Wallet Connected", description: "Your wallet has been successfully connected." }); setWalletModalOpen(false); onRefresh(); } catch (error: any) { toast({ title: "Connection Failed", description: error.response?.data?.error || "Failed to connect wallet.", variant: "destructive" }); }
     };
@@ -277,7 +301,15 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                                     <div className="flex flex-col md:flex-row h-full">
                                         <div className="w-full md:w-48 h-48 md:h-auto relative bg-muted flex-shrink-0">
                                             {listing.documents?.find((d: any) => d.file_type.startsWith('image/')) ? (
-                                                <img src={getFileUrl(listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path)} alt={listing.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                // <img src={getFileUrl(listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path)} alt={listing.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                <Image
+                                                    src={getFileUrl(listing.documents.find((d: any) => d.file_type.startsWith('image/')).file_path)}
+                                                    alt={listing.title}
+                                                    fill 
+                                                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" 
+                                                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                                    priority={true}
+                                                />
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center"><Building2 className="h-8 w-8 mb-2 opacity-50" /><span className="text-xs">No Image</span></div>
                                             )}
@@ -485,9 +517,27 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
 
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Connect Your Wallet</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4"><div className="space-y-2"><Label htmlFor="walletAddress">Ethereum Wallet Address</Label><Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." /></div><p className="text-sm text-muted-foreground">Enter your Ethereum wallet address to receive proceeds from token sales.</p></div>
-                    <DialogFooter><Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button><Button onClick={handleWalletConnect}>Connect Wallet</Button></DialogFooter>
+                    <DialogHeader>
+                        <DialogTitle>Connect Your Wallet</DialogTitle>
+                        <DialogDescription>Link your Ethereum wallet to receive proceeds from token sales.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <Button className="w-full" onClick={handleMetaMaskConnect}>
+                            Connect with MetaMask
+                        </Button>
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">or enter manually</span></div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="walletAddress">Wallet Address</Label>
+                            <Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleManualWalletConnect} disabled={!walletAddress}>Connect</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -507,35 +557,35 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                             Submit the collected rent for {selectedRentProperty?.title}. This will be held in pending status until an Admin verifies the funds.
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="rentAmount">Rent Amount (PKR)</Label>
-                            <Input 
-                                id="rentAmount" 
-                                type="number" 
-                                placeholder="e.g., 50000" 
+                            <Input
+                                id="rentAmount"
+                                type="number"
+                                placeholder="e.g., 50000"
                                 value={rentForm.amount}
-                                onChange={(e) => setRentForm({...rentForm, amount: e.target.value})}
+                                onChange={(e) => setRentForm({ ...rentForm, amount: e.target.value })}
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="periodStart">Period Start</Label>
-                                <Input 
-                                    id="periodStart" 
-                                    type="date" 
+                                <Input
+                                    id="periodStart"
+                                    type="date"
                                     value={rentForm.periodStart}
-                                    onChange={(e) => setRentForm({...rentForm, periodStart: e.target.value})}
+                                    onChange={(e) => setRentForm({ ...rentForm, periodStart: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="periodEnd">Period End</Label>
-                                <Input 
-                                    id="periodEnd" 
-                                    type="date" 
+                                <Input
+                                    id="periodEnd"
+                                    type="date"
                                     value={rentForm.periodEnd}
-                                    onChange={(e) => setRentForm({...rentForm, periodEnd: e.target.value})}
+                                    onChange={(e) => setRentForm({ ...rentForm, periodEnd: e.target.value })}
                                 />
                             </div>
                         </div>

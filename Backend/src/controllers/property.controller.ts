@@ -570,12 +570,13 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     }
 };
 
+
 /**
  * [ACTION] Delete Property
  * Guard Rails: CRITICAL SAFETY CHECK
  * - Checks if any investments exist (tokens sold).
  * - If tokens sold -> REJECT deletion (Force 'unlive' instead).
- * - If safe -> Cascading delete (Logs -> Sukuk -> Documents -> Property).
+ * - If safe -> Cascading delete wrapped in a Prisma Transaction.
  */
 export const deleteProperty = async (req: AuthRequest, res: Response) => {
     try {
@@ -589,7 +590,7 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
 
         const property = await prisma.property.findUnique({
             where: { property_id: propertyId },
-            include: { sukuks: true } // Include sukuks to check token status
+            include: { sukuks: true } 
         });
 
         if (!property || property.owner_id !== userId) {
@@ -605,26 +606,35 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             });
 
             if (investmentCount > 0) {
-                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold to investors. Please unlive the listing instead." });
+                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold. Please unlive the listing instead." });
                 return;
             }
         }
 
-        // Delete related records first
-        // Note: In a production app with proper cascade delete in DB, this might be simpler.
-        // But here we manually clean up to be safe.
-        await prisma.verificationLog.deleteMany({ where: { property_id: propertyId } });
-        await prisma.sukuk.deleteMany({ where: { property_id: propertyId } });
-        await prisma.document.deleteMany({ where: { property_id: propertyId } });
+        // Extract Sukuk IDs to clean up nested relations (like TokenPriceHistory)
+        const sukukIds = property.sukuks.map(s => s.sukuk_id);
 
-        await prisma.property.delete({
-            where: { property_id: propertyId },
-        });
+        // BULLETPROOF CASCADE DELETE: Wrap everything in a transaction.
+        // If one fails, they ALL revert. No ghost data.
+        await prisma.$transaction([
+            // 1. Clean up deepest nested relations first
+            prisma.tokenPriceHistory.deleteMany({ where: { sukuk_id: { in: sukukIds } } }),
+            
+            // 2. Clean up direct Property relations
+            prisma.rentPayment.deleteMany({ where: { property_id: propertyId } }),
+            prisma.listingUpdateRequest.deleteMany({ where: { property_id: propertyId } }),
+            prisma.verificationLog.deleteMany({ where: { property_id: propertyId } }),
+            prisma.document.deleteMany({ where: { property_id: propertyId } }),
+            prisma.sukuk.deleteMany({ where: { property_id: propertyId } }),
+            
+            // 3. Finally, delete the parent property
+            prisma.property.delete({ where: { property_id: propertyId } })
+        ]);
 
         res.json({ message: "Property deleted successfully" });
     } catch (error) {
         console.error("Delete Property Error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Server error during deletion." });
     }
 };
 

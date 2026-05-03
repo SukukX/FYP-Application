@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
 import { Users, Shield, Check, X } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
@@ -44,21 +45,23 @@ export default function Register() {
     };
 
     const [isLoading, setIsLoading] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
     const { login } = useAuth();
 
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setFormError(null);
 
         if (!selectedRole) {
-            toast({ title: "Role Required", description: "Please select your account type", variant: "destructive" });
+            setFormError("Please select your account type.");
             setIsLoading(false);
             return;
         }
 
         if (formData.password !== formData.confirmPassword) {
-            toast({ title: "Password Mismatch", description: "Passwords do not match", variant: "destructive" });
+            setFormError("Passwords do not match.");
             setIsLoading(false);
             return;
         }
@@ -77,22 +80,18 @@ export default function Register() {
             const res = await api.post("/auth/register", data, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
-            
+
             const { token, user } = res.data;
             login(token, user);
 
             toast({
                 title: "Account Created",
-                description: selectedRole === 'regulator' 
+                description: selectedRole === 'regulator'
                     ? "Your account is created and awaiting admin approval."
                     : "Your account has been created successfully.",
             });
         } catch (error: any) {
-            toast({
-                title: "Registration Failed",
-                description: error.response?.data?.message || "Something went wrong",
-                variant: "destructive",
-            });
+            setFormError(error.response?.data?.message || "Something went wrong. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -256,6 +255,12 @@ export default function Register() {
                                         required
                                     />
                                 </div>
+
+                                {formError && (
+                                    <Alert variant="destructive">
+                                        <AlertDescription>{formError}</AlertDescription>
+                                    </Alert>
+                                )}
 
                                 <Button type="submit" className="w-full" disabled={isLoading}>
                                     {isLoading ? "Creating Account..." : "Create Account"}

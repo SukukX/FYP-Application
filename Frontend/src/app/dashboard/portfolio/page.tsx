@@ -19,6 +19,7 @@ import {
 import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import Image from "next/image";
 
 const COLORS = [
     "hsl(var(--primary))",
@@ -303,10 +304,18 @@ export default function UnifiedPortfolio() {
                                                     {/* Property Image */}
                                                     <div className="w-32 flex-shrink-0 bg-muted relative overflow-hidden">
                                                         {holding.property_image ? (
-                                                            <img
+                                                            // <img
+                                                            //     src={getFileUrl(holding.property_image)}
+                                                            //     alt={holding.property_title}
+                                                            //     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                            // />
+                                                            <Image
                                                                 src={getFileUrl(holding.property_image)}
                                                                 alt={holding.property_title}
-                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                fill
+                                                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                priority={true}
                                                             />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center">
@@ -524,10 +533,18 @@ export default function UnifiedPortfolio() {
                                                     {/* Image */}
                                                     <div className="w-32 flex-shrink-0 bg-muted relative overflow-hidden">
                                                         {imageDoc ? (
-                                                            <img
+                                                            // <img
+                                                            //     src={getFileUrl(imageDoc.file_path)}
+                                                            //     alt={listing.title}
+                                                            //     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                            // />
+                                                            <Image
                                                                 src={getFileUrl(imageDoc.file_path)}
                                                                 alt={listing.title}
-                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                fill
+                                                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                priority={true}
                                                             />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center">
@@ -539,7 +556,7 @@ export default function UnifiedPortfolio() {
                                                                 className="text-[10px] px-1.5"
                                                                 variant={
                                                                     listing.verification_status === 'approved' ? 'default' :
-                                                                    listing.verification_status === 'rejected' ? 'destructive' : 'secondary'
+                                                                        listing.verification_status === 'rejected' ? 'destructive' : 'secondary'
                                                                 }
                                                             >
                                                                 {listing.verification_status}

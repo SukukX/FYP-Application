@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,7 @@ export default function Login() {
     const { toast } = useToast();
 
     const [isLoading, setIsLoading] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
     const { login } = useAuth();
 
     /**
@@ -41,6 +43,7 @@ export default function Login() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setFormError(null);
 
         try {
             // Include mfaCode if we are in the second step
@@ -68,12 +71,7 @@ export default function Login() {
             });
 
         } catch (error: any) {
-            toast({
-                title: "Login Failed",
-                description: error.response?.data?.message || "Invalid credentials",
-                variant: "destructive",
-            });
-            // If failed during MFA, maybe clear the code
+            setFormError(error.response?.data?.message || "Invalid credentials. Please try again.");
             if (showMfaInput) setMfaCode("");
         } finally {
             setIsLoading(false);
@@ -150,6 +148,12 @@ export default function Login() {
                                         Back to Login
                                     </Button>
                                 </div>
+                            )}
+
+                            {formError && (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{formError}</AlertDescription>
+                                </Alert>
                             )}
 
                             <Button type="submit" className="w-full h-11 text-base" disabled={isLoading}>
