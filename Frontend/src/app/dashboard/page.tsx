@@ -10,12 +10,13 @@ import OwnerPanel from "./owner/OwnerPanel";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
-import { Chatbot } from "@/components/Chatbot";
+import { useToast } from "@/hooks/use-toast";
 
 
 export default function UnifiedDashboard() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
+    const { toast } = useToast();
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -35,11 +36,18 @@ export default function UnifiedDashboard() {
 
     useEffect(() => {
         if (authLoading) return;
-        if (!user) return router.push("/auth/login");
+        if (!user) {
+            toast({
+                title: "Access Restricted",
+                description: "Please login to view your dashboard.",
+                variant: "destructive",
+            });
+            return router.push("/auth/login");
+        }
         if (user.role === 'regulator') return router.push("/dashboard/regulator");
         if (user.role === 'admin') return router.push("/dashboard/admin");
         fetchDashboard();
-    }, [user, authLoading, router, fetchDashboard]);
+    }, [user, authLoading, router, fetchDashboard, toast]);
 
     if (authLoading || loading) {
         return (
@@ -127,7 +135,6 @@ export default function UnifiedDashboard() {
                     </div>
                 )}
             </div>
-            <Chatbot />
         </div>
     );
 }

@@ -38,6 +38,34 @@ export const authenticate = async (
   }
 };
 
+/**
+ * Optional authentication — extracts user info if token is present,
+ * but does NOT reject requests without a token.
+ * Used by chatbot endpoint to support both authenticated and anonymous users.
+ */
+export const optionalAuth = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const token = req.header("Authorization")?.replace("Bearer ", "");
+
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as {
+        user_id: number;
+        email: string;
+        role: string;
+      };
+      req.user = decoded;
+    }
+  } catch (error) {
+    // Token invalid — proceed as unauthenticated
+    req.user = undefined;
+  }
+  next();
+};
+
 export const authorize = (roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {

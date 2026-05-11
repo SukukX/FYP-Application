@@ -822,7 +822,24 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                                     id="periodStart"
                                     type="date"
                                     value={rentForm.periodStart}
-                                    onChange={(e) => setRentForm({ ...rentForm, periodStart: e.target.value })}
+                                    onChange={(e) => {
+                                        const start = e.target.value;
+                                        if (!start) {
+                                            setRentForm({ ...rentForm, periodStart: "", periodEnd: "" });
+                                            return;
+                                        }
+                                        const startDate = new Date(start);
+                                        const endDate = new Date(startDate);
+                                        endDate.setMonth(startDate.getMonth() + 1);
+                                        
+                                        // Handle month overflow (e.g., Jan 31 -> Feb 28)
+                                        if (endDate.getMonth() > (startDate.getMonth() + 1) % 12) {
+                                            endDate.setDate(0);
+                                        }
+                                        
+                                        const formattedEnd = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+                                        setRentForm({ ...rentForm, periodStart: start, periodEnd: formattedEnd });
+                                    }}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -831,7 +848,8 @@ export default function OwnerPanel({ ownerData, commonData, onRefresh }: { owner
                                     id="periodEnd"
                                     type="date"
                                     value={rentForm.periodEnd}
-                                    onChange={(e) => setRentForm({ ...rentForm, periodEnd: e.target.value })}
+                                    readOnly
+                                    className="bg-muted"
                                 />
                             </div>
                         </div>

@@ -11,6 +11,7 @@ import { Loader2, ArrowRightLeft, Building, Tag, Clock } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function SecondaryMarketExchange() {
     const [listings, setListings] = useState<any[]>([]);
@@ -20,7 +21,8 @@ export default function SecondaryMarketExchange() {
     const [buyAmounts, setBuyAmounts] = useState<Record<number, number>>({});
     
     const { toast } = useToast();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
 
     const fetchListings = async () => {
         try {
@@ -42,8 +44,18 @@ export default function SecondaryMarketExchange() {
     };
 
     useEffect(() => {
+        if (authLoading) return;
+        if (!user) {
+            toast({
+                title: "Login Required",
+                description: "Please login to view the exchange market.",
+                variant: "destructive",
+            });
+            router.push("/auth/login");
+            return;
+        }
         fetchListings();
-    }, []);
+    }, [user, authLoading, router, toast]);
 
     // NEW: Handle the partial buy amount changes safely
     const handleAmountChange = (listingId: number, value: number, maxAvailable: number) => {

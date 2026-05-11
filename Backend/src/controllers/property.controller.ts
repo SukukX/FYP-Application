@@ -124,8 +124,8 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
                             }
                         });
                     }
-                } catch (e) {
-                    console.error("Error parsing deletedDocumentIds", e);
+                } catch (e: any) {
+                    console.error("Error parsing deletedDocumentIds:", e.message || e);
                 }
             }
         } else {
@@ -190,8 +190,25 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
 
         res.status(201).json(property);
     } catch (error: any) {
-        console.error("Create Property Error:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+        console.error("DEBUG: Create Property Failed");
+        console.error("Error Name:", error.name || "Error");
+        console.error("Error Message:", error.message || error);
+        if (error.stack) console.error("Stack Trace:", error.stack);
+        
+        // Log the body and files for debugging
+        try {
+            console.log("Request Body:", JSON.stringify(req.body, null, 2));
+        } catch (e) {
+            console.log("Request Body (non-serializable):", req.body);
+        }
+        console.log("Files received:", req.files ? Object.keys(req.files) : "None");
+
+        res.status(500).json({ 
+            success: false,
+            message: error.message || "Failed to create property", 
+            error: error.name || "InternalError",
+            details: error.name === 'PrismaClientKnownRequestError' ? "Database constraint violation" : undefined
+        });
     }
 };
 
@@ -258,9 +275,9 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
         }
 
         res.json({ message: "Files uploaded successfully", documents: uploadedDocs });
-    } catch (error) {
-        console.error("Upload Documents Error:", error);
-        res.status(500).json({ message: "Server error" });
+    } catch (error: any) {
+        console.error("Upload Documents Error:", error.message || error);
+        res.status(500).json({ success: false, message: error.message || "Failed to upload documents", error: error.message });
     }
 };
 
@@ -317,9 +334,9 @@ export const submitForVerification = async (req: AuthRequest, res: Response) => 
             message: isResubmission ? "Property resubmitted for verification" : "Property submitted for verification",
             property: updated
         });
-    } catch (error) {
-        console.error("Submit Verification Error:", error);
-        res.status(500).json({ message: "Server error" });
+    } catch (error: any) {
+        console.error("Submit Verification Error:", error.message || error);
+        res.status(500).json({ success: false, message: error.message || "Failed to submit for verification", error: error.message });
     }
 };
 

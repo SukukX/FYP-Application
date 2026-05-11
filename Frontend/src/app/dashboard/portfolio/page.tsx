@@ -20,6 +20,8 @@ import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
+import { useAuth } from "@/context/auth-context";
+import { useRouter } from "next/navigation";
 
 const COLORS = [
     "hsl(var(--primary))",
@@ -73,6 +75,8 @@ export default function UnifiedPortfolio() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'investments' | 'properties'>('investments');
     const { toast } = useToast();
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
 
     const fetchData = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -93,7 +97,19 @@ export default function UnifiedPortfolio() {
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        if (authLoading) return;
+        if (!user) {
+            toast({
+                title: "Login Required",
+                description: "Please login to view your portfolio.",
+                variant: "destructive",
+            });
+            router.push("/auth/login");
+            return;
+        }
+        fetchData();
+    }, [user, authLoading, router, toast]);
 
     // --- Investor calculations ---
     const allocationData = holdings.map((h, i) => ({

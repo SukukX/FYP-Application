@@ -2,7 +2,7 @@ import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
-const TOAST_LIMIT = 1;
+const TOAST_LIMIT = 5;
 const TOAST_REMOVE_DELAY = 1000000;
 
 type ToasterToast = ToastProps & {
@@ -137,10 +137,9 @@ type Toast = Omit<ToasterToast, "id">;
 function toast({ ...props }: Toast) {
   const id = genId();
 
-  // [UX IMPROVEMENT] Default durations based on variant
-  // Errors (destructive) stay until dismissed
-  // Success/Info vanish after 3 seconds
-  const defaultDuration = props.variant === "destructive" ? Infinity : 3000;
+  // Errors (destructive) stay for 10 seconds to ensure they are read
+  // Success/Info vanish after 5 seconds
+  const defaultDuration = props.variant === "destructive" ? 10000 : 5000;
   const finalProps = {
     duration: defaultDuration,
     ...props,

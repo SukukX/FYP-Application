@@ -58,7 +58,7 @@ export const submitRent = async (req: AuthRequest, res: Response) => {
 
     } catch (error: any) {
         console.error("Submit Rent Error:", error);
-        res.status(500).json({ message: "Server error during rent submission." });
+        res.status(500).json({ success: false, message: error.message || "Failed to submit rent", error: error.message });
     }
 };
 
@@ -96,9 +96,9 @@ export const distributeRent = async (req: AuthRequest, res: Response) => {
         
         // Catch our specific service-level errors (like double-taps) and return 400
         if (error.message.includes("Idempotency") || error.message.includes("not found")) {
-            return res.status(400).json({ message: error.message });
+            return res.status(400).json({ success: false, message: error.message });
         }
 
-        res.status(500).json({ message: "Server error during rent distribution." });
+        res.status(500).json({ success: false, message: error.message || "Failed to distribute rent", error: error.message });
     }
 };
