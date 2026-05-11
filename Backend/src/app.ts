@@ -33,6 +33,7 @@ import transactionRoutes from "./routes/transaction.routes";
 import exchangeRoutes from "./routes/exchange.routes";
 import adminRoutes from "./routes/admin.routes";
 import chatRoutes from "./routes/chat.routes";
+import contactRoutes from "./routes/contact.routes";
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/exchange",exchangeRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/contact", contactRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

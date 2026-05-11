@@ -91,7 +91,7 @@ export const getMarketplaceListings = async (req: AuthRequest, res: Response) =>
             },
             include: {
                 sukuk: {
-                    include: { property: { include: { documents: true } } }
+                    include: { property: { select: { property_id: true, title: true, location: true, property_type: true } } }
                 },
                 seller: { select: { name: true } }
             },

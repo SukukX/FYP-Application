@@ -227,8 +227,13 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "You are not authorized to upload documents for this property." });
             return;
         }
 
@@ -291,8 +296,18 @@ export const submitForVerification = async (req: AuthRequest, res: Response) => 
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            console.error(`[Submit] Property ${propertyId} not found.`);
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            console.error(`[Submit] Ownership mismatch. Property Owner: ${property.owner_id}, Current User: ${userId}`);
+            res.status(403).json({ 
+                message: "You are not authorized to submit this property.",
+                debug: process.env.NODE_ENV === 'development' ? { propertyOwner: property.owner_id, currentUser: userId } : undefined
+            });
             return;
         }
 
@@ -607,8 +622,13 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to update this listing's status." });
             return;
         }
 
@@ -665,8 +685,13 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             include: { sukuks: true } 
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to delete this property." });
             return;
         }
 
@@ -726,8 +751,13 @@ export const updateTokenSupply = async (req: AuthRequest, res: Response) => {
             include: { sukuks: true }
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to update this listing's token supply." });
             return;
         }
 

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Navbar } from "@/components/Navbar";
-import { Chatbot } from "@/components/Chatbot";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,10 +11,10 @@ import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useExchangeListings } from "@/hooks/use-queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function SecondaryMarketExchange() {
-    const [listings, setListings] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
     // NEW: Track how many tokens the user wants to buy for each listing
     const [buyAmounts, setBuyAmounts] = useState<Record<number, number>>({});
@@ -23,39 +22,31 @@ export default function SecondaryMarketExchange() {
     const { toast } = useToast();
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
+    const queryClient = useQueryClient();
 
-    const fetchListings = async () => {
-        try {
-            const res = await api.get("/exchange/listings");
-            setListings(res.data);
-            
-            // Initialize the buy amounts to 1 for every fetched listing
+    const isReady = !authLoading && !!user;
+    const { data: listings = [], isLoading: loading } = useExchangeListings(isReady) as { data: any[]; isLoading: boolean };
+
+    // Initialize buy amounts when listings change
+    useEffect(() => {
+        if (listings.length > 0) {
             const initialAmounts: Record<number, number> = {};
-            res.data.forEach((l: any) => {
-                initialAmounts[l.listing_id] = 1;
+            listings.forEach((l: any) => {
+                initialAmounts[l.listing_id] = buyAmounts[l.listing_id] || 1;
             });
             setBuyAmounts(initialAmounts);
-        } catch (error) {
-            console.error("Failed to fetch listings:", error);
-            toast({ title: "Error", description: "Could not load the secondary market.", variant: "destructive" });
-        } finally {
-            setLoading(false);
         }
-    };
+    }, [listings]);
+
+    const fetchListings = () => queryClient.invalidateQueries({ queryKey: ["exchange", "listings"] });
 
     useEffect(() => {
         if (authLoading) return;
         if (!user) {
-            toast({
-                title: "Login Required",
-                description: "Please login to view the exchange market.",
-                variant: "destructive",
-            });
-            router.push("/auth/login");
+            router.push("/auth/login?reason=unauthorized");
             return;
         }
-        fetchListings();
-    }, [user, authLoading, router, toast]);
+    }, [user, authLoading, router]);
 
     // NEW: Handle the partial buy amount changes safely
     const handleAmountChange = (listingId: number, value: number, maxAvailable: number) => {
@@ -249,7 +240,6 @@ export default function SecondaryMarketExchange() {
                     </div>
                 )}
             </div>
-            <Chatbot />
         </div>
     );
 }

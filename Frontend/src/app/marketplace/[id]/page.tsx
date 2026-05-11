@@ -29,7 +29,6 @@ import {
     AreaChart,
     CartesianGrid
 } from "recharts";
-import { Chatbot } from "@/components/Chatbot";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 import {
@@ -572,7 +571,6 @@ export default function PropertyDetail() {
                 </DialogContent>
             </Dialog>
 
-            <Chatbot />
         </div>
     );
 }

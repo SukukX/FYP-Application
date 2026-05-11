@@ -35,6 +35,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
                 is_active: true,
                 rejection_reason: true,
                 is_resubmitted: true,
+                is_email_verified: true,
                 kyc_request: {
                     select: {
                         status: true,

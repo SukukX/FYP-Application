@@ -41,10 +41,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
+        const isLoginRequest = error.config?.url?.includes("/auth/login");
+        const isAlreadyOnLoginPage = typeof window !== "undefined" && window.location.pathname === "/auth/login";
+
+        if (error.response?.status === 401 && !isLoginRequest && !isAlreadyOnLoginPage) {
             Cookies.remove("token");
             if (typeof window !== "undefined") {
-                window.location.href = "/auth/login";
+                // Redirect to login with a reason to show a message
+                window.location.href = "/auth/login?reason=unauthorized";
             }
         }
         return Promise.reject(error);

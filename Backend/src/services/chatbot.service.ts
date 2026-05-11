@@ -4,8 +4,26 @@ import prisma from '../config/prisma';
  * Chatbot Service
  * ---------------
  * Responsible for gathering user-specific context to personalize chatbot interactions.
+ * Uses a 60-second in-memory cache per user to avoid re-querying on every chat message.
  */
+
+// In-memory TTL cache: userId → { context, timestamp }
+const _contextCache = new Map<number, { context: string; ts: number }>();
+const CACHE_TTL_MS = 60_000; // 60 seconds
+
 export const getChatbotUserContext = async (userId: number): Promise<string> => {
+    // Check cache first
+    const cached = _contextCache.get(userId);
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+        return cached.context;
+    }
+
+    const context = await _fetchUserContext(userId);
+    _contextCache.set(userId, { context, ts: Date.now() });
+    return context;
+};
+
+const _fetchUserContext = async (userId: number): Promise<string> => {
     try {
         const user = await prisma.user.findUnique({
             where: { user_id: userId },
@@ -23,7 +41,7 @@ export const getChatbotUserContext = async (userId: number): Promise<string> => 
                     include: {
                         sukuk: {
                             include: {
-                                property: { select: { title: true } }
+                                property: { select: { title: true, owner_id: true } }
                             }
                         }
                     }

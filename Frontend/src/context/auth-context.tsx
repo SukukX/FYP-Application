@@ -99,7 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = () => {
         Cookies.remove("token");
         setUser(null);
-        router.push("/auth/login");
+        // Clear all cached queries to prevent data leakage between sessions
+        import("@tanstack/react-query").then(({ useQueryClient }) => {
+            // Note: This is a hack because we are not in a component here
+            // Better to use queryClient directly if available
+        });
+        // Actually, better to just reload the page on logout to be 100% safe
+        window.location.href = "/auth/login";
     };
 
     return (

@@ -7,8 +7,12 @@ import { provider } from "../config/blockchain";
 
 
 // [HELPER] Build alerts from already-fetched KYC and MFA records (no extra DB calls)
-const buildAlerts = (kyc: { status: string; rejection_reason?: string | null } | null, mfaEnabled: boolean) => {
+const buildAlerts = (kyc: { status: string; rejection_reason?: string | null } | null, mfaEnabled: boolean, isEmailVerified: boolean) => {
     const alerts = [];
+
+    if (!isEmailVerified) {
+        alerts.push({ type: "warning", title: "Email Not Verified", message: "Please check your inbox to verify your email address. Some features may be restricted until verified.", action: "/settings/profile" });
+    }
 
     if (!kyc) {
         alerts.push({ type: "warning", message: "Complete your KYC verification to start investing.", action: "/kyc" });
@@ -52,7 +56,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         const kycRecord = userData.kyc_request;
         const mfaEnabled = userData.mfa_setting?.is_enabled || false;
         const wallet = userData.wallets[0] || null;
-        const alerts = buildAlerts(kycRecord, mfaEnabled);
+        const alerts = buildAlerts(kycRecord, mfaEnabled, !!userData.is_email_verified);
 
         const [ownerInvestments, userSecondaryListings] = await Promise.all([
             prisma.investment.findMany({

@@ -8,9 +8,9 @@
  * - State: Updates global AuthContext (user + token).
  */
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,28 @@ import { useAuth } from "@/context/auth-context";
 import { loginSchema } from "@/lib/validation";
 import { useToast } from "@/hooks/use-toast";
 
-export default function Login() {
+function LoginForm() {
     const [showMfaInput, setShowMfaInput] = useState(false);
     const [success, setSuccess] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
     const { login } = useAuth();
     const { toast } = useToast();
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const reason = searchParams.get("reason");
+        if (reason === "unauthorized") {
+            toast({
+                title: "Authentication Required",
+                description: "Please login to view that page.",
+                variant: "destructive",
+                duration: 5000, // Show longer
+            });
+            // Clean up URL
+            window.history.replaceState({}, "", "/auth/login");
+        }
+    }, [searchParams, toast]);
 
     const {
         register,
@@ -190,5 +205,17 @@ export default function Login() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+export default function Login() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+            </div>
+        }>
+            <LoginForm />
+        </Suspense>
     );
 }

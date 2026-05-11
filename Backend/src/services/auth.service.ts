@@ -3,6 +3,8 @@ import { Role } from '@prisma/client';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import * as speakeasy from "speakeasy";
+import crypto from "crypto";
+import { EmailService } from "./email.service";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -34,6 +36,9 @@ export class AuthService {
             }
         }
 
+        if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined");
+        const verificationToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "5m" });
+
         const user = await prisma.$transaction(async (tx) => {
             const newUser = await tx.user.create({
                 data: {
@@ -45,11 +50,16 @@ export class AuthService {
                     cnic: validCnic,
                     dob: validDob,
                     is_active: validRole === Role.regulator ? false : true,
+                    email_verification_token: verificationToken,
                 },
             });
 
-
             return newUser;
+        });
+
+        // Send Verification Email (Async - don't block registration response if email fails)
+        EmailService.sendVerificationEmail(email, name, verificationToken).catch(err => {
+            console.error("Failed to send verification email:", err);
         });
 
         // Re-fetch user with KYC request for token generation
@@ -109,6 +119,60 @@ export class AuthService {
         return this.generateToken(user);
     }
 
+    async verifyEmail(token: string) {
+        if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined");
+        
+        try {
+            // Verify token expiration and signature
+            jwt.verify(token, JWT_SECRET);
+        } catch (error) {
+            throw new Error("Verification link has expired or is invalid. Please request a new one.");
+        }
+
+        const user = await prisma.user.findFirst({
+            where: { email_verification_token: token }
+        });
+
+        if (!user) {
+            throw new Error("Invalid verification token.");
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { user_id: user.user_id },
+            data: {
+                is_email_verified: true,
+                email_verification_token: null
+            }
+        });
+
+        // Send Welcome Email
+        EmailService.sendWelcomeEmail(updatedUser.email, updatedUser.name).catch(err => {
+            console.error("Failed to send welcome email:", err);
+        });
+
+        return { message: "Email verified successfully!" };
+    }
+
+    async resendVerificationEmail(userId: number) {
+        const user = await prisma.user.findUnique({ where: { user_id: userId } });
+        if (!user) throw new Error("User not found.");
+        if (user.is_email_verified) throw new Error("Email is already verified.");
+
+        if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined");
+        const verificationToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: "5m" });
+
+        await prisma.user.update({
+            where: { user_id: userId },
+            data: { email_verification_token: verificationToken }
+        });
+
+        EmailService.sendVerificationEmail(user.email, user.name, verificationToken).catch(err => {
+            console.error("Failed to resend verification email:", err);
+        });
+
+        return { message: "A new verification email has been sent." };
+    }
+
     private generateToken(user: any) {
         if (!JWT_SECRET) {
             throw new Error("JWT_SECRET is not defined in environment variables");
@@ -123,7 +187,8 @@ export class AuthService {
         // Return flat user object with kycStatus
         const userResponse = {
             ...user,
-            kycStatus: user.kyc_request?.status || "not_submitted"
+            kycStatus: user.kyc_request?.status || "not_submitted",
+            is_email_verified: !!user.is_email_verified
         };
         delete userResponse.password; // Safety first
         delete userResponse.mfa_setting; // Keep payload clean

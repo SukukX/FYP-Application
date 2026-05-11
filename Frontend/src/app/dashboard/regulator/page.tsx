@@ -35,7 +35,6 @@ import api from "@/lib/api";
 import { getFileUrl } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
-import { Chatbot } from "@/components/Chatbot";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
@@ -697,7 +696,6 @@ export default function RegulatorDashboard() {
                 </DialogContent>
             </Dialog>
 
-            <Chatbot />
         </div >
     );
 }

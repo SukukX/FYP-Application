@@ -7,10 +7,12 @@ import { Router } from "express";
  * - Frontend: Login/Register Forms (src/app/auth/*).
  * - Security: Generates JWT tokens for session management.
  */
-import { register, login } from "../controllers/auth.controller";
+import { register, login, verifyEmail, resendVerification } from "../controllers/auth.controller";
 import { upload } from "../controllers/kyc.controller";
 import { validate } from "../middleware/validate.middleware";
 import { registerSchema, loginSchema } from "../schemas/validation.schemas";
+
+import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -26,5 +28,9 @@ router.post(
     register
 );
 router.post("/login", validate(loginSchema), login);
+router.get("/verify-email", verifyEmail);
+
+// Protected Routes
+router.post("/resend-verification", authenticate, resendVerification);
 
 export default router;

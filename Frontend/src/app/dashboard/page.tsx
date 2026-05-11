@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import api from "@/lib/api";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
 import { Loader2, Building2, TrendingUp, LayoutGrid } from "lucide-react";
@@ -11,45 +10,36 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
+import { useDashboard } from "@/hooks/use-queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { EmailVerificationBlocker } from "@/components/EmailVerificationBlocker";
 
 
 export default function UnifiedDashboard() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
-    const [dashboardData, setDashboardData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
 
     // Default to 'investor' so all users (including new ones) see Getting Started
     const [activeTab, setActiveTab] = useState<'investor' | 'owner'>('investor');
 
-    const fetchDashboard = useCallback(async () => {
-        try {
-            const res = await api.get("/dashboard/user");
-            setDashboardData(res.data);
-        } catch (error) {
-            console.error("Failed to load dashboard", error);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const isReady = !authLoading && !!user && user.role !== 'regulator' && user.role !== 'admin';
+    const { data: dashboardData, isLoading: loading, isError } = useDashboard(isReady);
+
+    const fetchDashboard = () => queryClient.invalidateQueries({ queryKey: ["dashboard", "user"] });
 
     useEffect(() => {
         if (authLoading) return;
         if (!user) {
-            toast({
-                title: "Access Restricted",
-                description: "Please login to view your dashboard.",
-                variant: "destructive",
-            });
-            return router.push("/auth/login");
+            router.push("/auth/login?reason=unauthorized");
+            return;
         }
         if (user.role === 'regulator') return router.push("/dashboard/regulator");
         if (user.role === 'admin') return router.push("/dashboard/admin");
-        fetchDashboard();
-    }, [user, authLoading, router, fetchDashboard, toast]);
+    }, [user, authLoading, router]);
 
-    if (authLoading || loading) {
+    if (authLoading || loading || !user) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -57,7 +47,16 @@ export default function UnifiedDashboard() {
         );
     }
 
-    if (!dashboardData) return <div className="text-center mt-20">Failed to load data.</div>;
+    if (!dashboardData || isError) return <div className="text-center mt-20">Failed to load data.</div>;
+
+    if (!user.is_email_verified) {
+        return (
+            <div className="min-h-screen bg-background">
+                <Navbar />
+                <EmailVerificationBlocker />
+            </div>
+        );
+    }
 
     const { common, ownerData, investorData } = dashboardData;
 
