@@ -137,6 +137,15 @@ type Toast = Omit<ToasterToast, "id">;
 function toast({ ...props }: Toast) {
   const id = genId();
 
+  // [UX IMPROVEMENT] Default durations based on variant
+  // Errors (destructive) stay until dismissed
+  // Success/Info vanish after 3 seconds
+  const defaultDuration = props.variant === "destructive" ? Infinity : 3000;
+  const finalProps = {
+    duration: defaultDuration,
+    ...props,
+  };
+
   const update = (props: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",
@@ -147,7 +156,7 @@ function toast({ ...props }: Toast) {
   dispatch({
     type: "ADD_TOAST",
     toast: {
-      ...props,
+      ...finalProps,
       id,
       open: true,
       onOpenChange: (open) => {

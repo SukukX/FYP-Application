@@ -54,6 +54,16 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         const wallet = userData.wallets[0] || null;
         const alerts = buildAlerts(kycRecord, mfaEnabled);
 
+        const [ownerInvestments, userSecondaryListings] = await Promise.all([
+            prisma.investment.findMany({
+                where: { investor_id: userId, sukuk: { property: { owner_id: userId } } }
+            }),
+            prisma.secondaryListing.findMany({
+                where: { seller_id: userId, status: "open" },
+                include: { sukuk: true }
+            })
+        ]);
+
         // ==========================================
         // 2. Fetch & Calculate OWNER Data
         // ==========================================
@@ -89,12 +99,19 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
             }
 
+            const mySecondaryListings = userSecondaryListings.filter(sl => sl.sukuk_id === sukuk?.sukuk_id);
+            const listedTokens = mySecondaryListings.reduce((sum, sl) => sum + sl.available_tokens, 0);
+            const ownerInv = ownerInvestments.find(inv => inv.sukuk_id === sukuk?.sukuk_id);
+
             return {
                 ...p,
                 total_tokens: sukuk ? sukuk.total_tokens : 0,
                 tokens_available: sukuk ? sukuk.available_tokens : 0,
                 tokens_sold: soldForSukuk,
                 token_price: sukuk ? sukuk.token_price : 0,
+                owned_tokens: ownerInv ? ownerInv.tokens_owned : 0,
+                listed_tokens: listedTokens,
+                active_secondary_listings: mySecondaryListings
             };
         });
 
@@ -183,6 +200,10 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             const currentValue = inv.tokens_owned * currentPrice;
             const profitLoss = currentValue - purchaseValue;
             const profitLossPct = purchaseValue > 0 ? ((profitLoss / purchaseValue) * 100) : 0;
+
+            const mySecondaryListings = userSecondaryListings.filter(sl => sl.sukuk_id === sukuk?.sukuk_id);
+            const listedTokens = mySecondaryListings.reduce((sum, sl) => sum + sl.available_tokens, 0);
+
             return {
                 investment_id: inv.investment_id,
                 property_id: sukuk.property_id,
@@ -198,6 +219,8 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 profit_loss: profitLoss,
                 profit_loss_pct: profitLossPct,
                 purchase_date: inv.purchase_date,
+                listed_tokens: listedTokens,
+                active_secondary_listings: mySecondaryListings
             };
         });
 

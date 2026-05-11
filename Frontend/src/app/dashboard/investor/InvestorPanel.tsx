@@ -73,9 +73,9 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
     // The missing logic to send data to the backend
     const handleCreateListing = async () => {
+        if (!selectedInvestment || isListing) return;
         setIsListing(true);
         try {
-            // Sends the payload to our new Partial Selling API
             await api.post("/exchange/listings", {
                 sukuk_id: selectedInvestment.sukuk_id,
                 token_amount: parseInt(tokenAmount),
@@ -85,6 +85,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
             toast({ title: "Success", description: "Tokens listed on the secondary market!" });
             setSellModalOpen(false);
+            setTokenAmount("");
             onRefresh();
         } catch (error: any) {
             toast({
@@ -94,6 +95,16 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             });
         } finally {
             setIsListing(false);
+        }
+    };
+
+    const handleCancelListing = async (listingId: number) => {
+        try {
+            await api.delete(`/exchange/listings/${listingId}`);
+            toast({ title: "Listing Cancelled", description: "Tokens have been unlisted." });
+            onRefresh();
+        } catch (error: any) {
+            toast({ title: "Error", description: "Failed to cancel listing.", variant: "destructive" });
         }
     };
 
@@ -387,8 +398,10 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                             variant="outline"
                                             className="border-primary/20 hover:border-primary/50"
                                             onClick={() => {
-                                                setSelectedInvestment(inv);
-                                                setPricePerToken("");
+                                                const holding = holdings.find((h: any) => h.sukuk_id === inv.sukuk_id);
+                                                setSelectedInvestment(holding || inv);
+                                                setTokenAmount("");
+                                                setPricePerToken((inv.sukuk?.token_price || 0).toString());
                                                 setSellModalOpen(true);
                                             }}
                                         >
@@ -548,18 +561,27 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        <div className="grid grid-cols-2 gap-4 p-3 bg-muted/30 rounded-lg border text-sm">
+                            <div className="space-y-1">
+                                <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Owned in Pocket</p>
+                                <p className="text-lg font-bold text-primary">{selectedInvestment?.tokens_owned || 0} Tokens</p>
+                            </div>
+                            <div className="space-y-1 text-right">
+                                <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Currently Listed</p>
+                                <p className="text-lg font-bold text-accent">{selectedInvestment?.listed_tokens || 0} Tokens</p>
+                            </div>
+                        </div>
+
                         {/* 1. QUANTITY INPUT */}
                         <div className="space-y-2">
-                            <div className="flex justify-between">
-                                <Label htmlFor="tokenAmount">Amount to Sell</Label>
-                                <span className="text-xs text-muted-foreground">Owned: {selectedInvestment?.tokens_owned}</span>
-                            </div>
+                            <Label htmlFor="tokenAmount">Amount to Sell (Max: {(selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0)})</Label>
                             <Input
                                 id="tokenAmount"
                                 type="number"
                                 placeholder="Quantity"
                                 value={tokenAmount}
                                 onChange={(e) => setTokenAmount(e.target.value)}
+                                max={(selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0)}
                             />
                         </div>
 
@@ -605,12 +627,32 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                 </div>
                             </div>
                         )}
+
+                        {/* ACTIVE LISTINGS */}
+                        {selectedInvestment?.active_secondary_listings?.length > 0 && (
+                            <div className="pt-4 border-t space-y-3">
+                                <h4 className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Active Listings</h4>
+                                <div className="space-y-2">
+                                    {selectedInvestment.active_secondary_listings.map((sl: any) => (
+                                        <div key={sl.listing_id} className="flex items-center justify-between p-2 rounded border bg-background text-xs">
+                                            <div>
+                                                <p className="font-bold">{sl.available_tokens} Tokens @ {sl.price_per_token} PKR</p>
+                                                <p className="text-[10px] text-muted-foreground">Expires: {new Date(sl.expires_at).toLocaleDateString()}</p>
+                                            </div>
+                                            <Button variant="ghost" size="sm" className="h-7 text-destructive hover:bg-destructive/10" onClick={() => handleCancelListing(sl.listing_id)}>
+                                                <XCircle className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setSellModalOpen(false)}>Cancel</Button>
                         <Button
-                            disabled={isListing || !pricePerToken || !tokenAmount || parseInt(tokenAmount) > selectedInvestment?.tokens_owned}
+                            disabled={isListing || !pricePerToken || !tokenAmount || parseInt(tokenAmount) <= 0 || parseInt(tokenAmount) > ((selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0))}
                             onClick={handleCreateListing}
                         >
                             {isListing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

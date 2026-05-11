@@ -9,6 +9,8 @@ import { Router } from "express";
  */
 import { register, login } from "../controllers/auth.controller";
 import { upload } from "../controllers/kyc.controller";
+import { validate } from "../middleware/validate.middleware";
+import { registerSchema, loginSchema } from "../schemas/validation.schemas";
 
 const router = Router();
 
@@ -20,8 +22,9 @@ router.post(
         { name: "cnic_back", maxCount: 1 },
         { name: "face_scan", maxCount: 1 },
     ]),
+    validate(registerSchema),
     register
 );
-router.post("/login", login);
+router.post("/login", validate(loginSchema), login);
 
 export default router;

@@ -30,6 +30,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
                 country: true,
                 address: true,
                 dob: true,
+                cnic: true,
                 profile_pic: true,
                 is_active: true,
                 rejection_reason: true,

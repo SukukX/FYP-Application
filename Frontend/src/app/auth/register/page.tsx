@@ -12,91 +12,114 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
-import { Users, Shield, Check, X } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
+import { Users, Shield, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
+import { registerSchema } from "@/lib/validation";
+import { useToast } from "@/hooks/use-toast";
 
 type UserRole = "user" | "regulator";
 
 export default function Register() {
     const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-    const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        phone_number: "",
-        dob: "",
-        cnic: "",
-    });
-    
+    const [success, setSuccess] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+    const { login } = useAuth();
     const { toast } = useToast();
+
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        watch,
+        formState: { errors },
+    } = useForm({
+        resolver: zodResolver(registerSchema),
+        mode: "onBlur",
+        defaultValues: {
+            name: "",
+            email: "",
+            password: "",
+            confirmPassword: "",
+            phone_number: "",
+            dob: "",
+            cnic: "",
+            role: "user" as UserRole,
+        },
+    });
+
+    const password = watch("password", "");
+
+    const formatCNIC = (value: string) => {
+        const numbers = value.replace(/[^\d]/g, "");
+        if (numbers.length <= 5) return numbers;
+        if (numbers.length <= 12) return `${numbers.slice(0, 5)}-${numbers.slice(5)}`;
+        return `${numbers.slice(0, 5)}-${numbers.slice(5, 12)}-${numbers.slice(12, 13)}`;
+    };
+
+    const handleCnicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const formatted = formatCNIC(e.target.value);
+        setValue("cnic", formatted, { shouldValidate: true });
+    };
+
+    const passwordRequirements = [
+        { label: "At least 8 characters", regex: /.{8,}/ },
+        { label: "At least one uppercase letter", regex: /[A-Z]/ },
+        { label: "At least one lowercase letter", regex: /[a-z]/ },
+        { label: "At least one number", regex: /[0-9]/ },
+        { label: "At least one special character", regex: /[^A-Za-z0-9]/ },
+    ];
 
     const handleRoleSelect = (role: UserRole) => {
         setSelectedRole(role);
     };
 
-    const [isLoading, setIsLoading] = useState(false);
-    const [formError, setFormError] = useState<string | null>(null);
-    const { login } = useAuth();
-
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const onSubmit = async (values: any) => {
         setIsLoading(true);
         setFormError(null);
 
-        if (!selectedRole) {
-            setFormError("Please select your account type.");
-            setIsLoading(false);
-            return;
-        }
-
-        if (formData.password !== formData.confirmPassword) {
-            setFormError("Passwords do not match.");
-            setIsLoading(false);
-            return;
-        }
-
-
         try {
             const data = new FormData();
-            data.append("name", formData.name);
-            data.append("email", formData.email);
-            data.append("password", formData.password);
-            data.append("role", selectedRole);
-            data.append("phone_number", formData.phone_number);
-            data.append("cnic", formData.cnic);
-            data.append("dob", formData.dob);
+            data.append("name", values.name);
+            data.append("email", values.email);
+            data.append("password", values.password);
+            data.append("role", selectedRole!);
+            data.append("phone_number", values.phone_number || "");
+            data.append("cnic", values.cnic);
+            data.append("dob", values.dob);
 
             const res = await api.post("/auth/register", data, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
 
-            const { token, user } = res.data;
-            login(token, user);
-
             toast({
                 title: "Account Created",
-                description: selectedRole === 'regulator'
-                    ? "Your account is created and awaiting admin approval."
-                    : "Your account has been created successfully.",
+                description: selectedRole === 'regulator' 
+                    ? "Your account is awaiting approval. Redirecting..." 
+                    : "Welcome to Smart Sukuk! Redirecting...",
+                className: "bg-primary text-primary-foreground border-none",
+                duration: 3000,
             });
+            const { token, user } = res.data;
+            login(token, user);
         } catch (error: any) {
-            setFormError(error.response?.data?.message || "Something went wrong. Please try again.");
+            setFormError(error.response?.data?.message || "Registration failed. Please check your details.");
         } finally {
             setIsLoading(false);
         }
     };
 
+    if (success) return null;
 
     if (!selectedRole) {
         return (
@@ -179,14 +202,13 @@ export default function Register() {
                             <CardDescription>Create your account to get started</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <form onSubmit={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Full Name *</Label>
                                     <Input
                                         id="name"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        required
+                                        {...register("name")}
+                                        error={errors.name?.message}
                                     />
                                 </div>
 
@@ -194,9 +216,9 @@ export default function Register() {
                                     <Label htmlFor="phone_number">Phone Number</Label>
                                     <Input
                                         id="phone_number"
-                                        value={formData.phone_number}
-                                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                                         placeholder="+92 300 1234567"
+                                        {...register("phone_number")}
+                                        error={errors.phone_number?.message}
                                     />
                                 </div>
 
@@ -205,9 +227,8 @@ export default function Register() {
                                     <Input
                                         id="email"
                                         type="email"
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        required
+                                        {...register("email")}
+                                        error={errors.email?.message}
                                     />
                                 </div>
 
@@ -216,9 +237,8 @@ export default function Register() {
                                     <Input
                                         id="dob"
                                         type="date"
-                                        value={formData.dob}
-                                        onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                                        required
+                                        {...register("dob")}
+                                        error={errors.dob?.message}
                                     />
                                 </div>
 
@@ -227,9 +247,10 @@ export default function Register() {
                                     <Input
                                         id="cnic"
                                         placeholder="42101-1234567-1"
-                                        value={formData.cnic}
-                                        onChange={(e) => setFormData({ ...formData, cnic: e.target.value })}
-                                        required
+                                        {...register("cnic")}
+                                        onChange={handleCnicChange}
+                                        error={errors.cnic?.message}
+                                        maxLength={15}
                                     />
                                 </div>
 
@@ -239,10 +260,23 @@ export default function Register() {
                                     <Input
                                         id="password"
                                         type="password"
-                                        value={formData.password}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        required
+                                        {...register("password")}
+                                        error={errors.password?.message}
                                     />
+                                    <div className="grid grid-cols-1 gap-1.5 mt-2 p-3 bg-muted/30 rounded-lg border border-border/50">
+                                        <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wider">Security Requirements</p>
+                                        {passwordRequirements.map((req, idx) => {
+                                            const isMet = req.regex.test(password);
+                                            return (
+                                                <div key={idx} className="flex items-center gap-2 transition-all duration-300">
+                                                    <div className={`h-1.5 w-1.5 rounded-full ${isMet ? "bg-verified scale-125 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-muted-foreground/30"}`} />
+                                                    <span className={`text-[11px] leading-none transition-colors duration-300 ${isMet ? "text-verified font-medium" : "text-muted-foreground"}`}>
+                                                        {req.label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -250,14 +284,13 @@ export default function Register() {
                                     <Input
                                         id="confirmPassword"
                                         type="password"
-                                        value={formData.confirmPassword}
-                                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                        required
+                                        {...register("confirmPassword")}
+                                        error={errors.confirmPassword?.message}
                                     />
                                 </div>
 
                                 {formError && (
-                                    <Alert variant="destructive">
+                                    <Alert variant="destructive" className="animate-in slide-in-from-top-1">
                                         <AlertDescription>{formError}</AlertDescription>
                                     </Alert>
                                 )}

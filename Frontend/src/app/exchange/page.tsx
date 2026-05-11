@@ -80,6 +80,26 @@ export default function SecondaryMarketExchange() {
         }
     };
 
+    const handleCancelListing = async (listingId: number) => {
+        setProcessingId(listingId);
+        try {
+            await api.delete(`/exchange/listings/${listingId}`);
+            toast({
+                title: "Listing Cancelled",
+                description: "Your tokens have been removed from the exchange.",
+            });
+            fetchListings();
+        } catch (error: any) {
+            toast({
+                title: "Cancellation Failed",
+                description: "Could not remove listing.",
+                variant: "destructive",
+            });
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background pb-12">
             <Navbar />
@@ -182,21 +202,34 @@ export default function SecondaryMarketExchange() {
                                             </Button>
                                         </Link>
 
-                                        <Button 
-                                            className="w-full" 
-                                            size="lg"
-                                            disabled={isOwnListing || processingId === listing.listing_id || availableTokens === 0}
-                                            onClick={() => handleBuy(listing.listing_id)}
-                                            variant={isOwnListing ? "secondary" : "default"}
-                                        >
-                                            {processingId === listing.listing_id ? (
-                                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Swap in progress...</>
-                                            ) : isOwnListing ? (
-                                                "Your Listing"
-                                            ) : (
-                                                `Buy ${currentBuyAmount} Token${currentBuyAmount > 1 ? 's' : ''}`
-                                            )}
-                                        </Button>
+                                        {isOwnListing ? (
+                                            <Button 
+                                                className="w-full border-destructive text-destructive hover:bg-destructive/10" 
+                                                variant="outline"
+                                                size="lg"
+                                                disabled={processingId === listing.listing_id}
+                                                onClick={() => handleCancelListing(listing.listing_id)}
+                                            >
+                                                {processingId === listing.listing_id ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelling...</>
+                                                ) : (
+                                                    "Cancel Listing"
+                                                )}
+                                            </Button>
+                                        ) : (
+                                            <Button 
+                                                className="w-full" 
+                                                size="lg"
+                                                disabled={processingId === listing.listing_id || availableTokens === 0}
+                                                onClick={() => handleBuy(listing.listing_id)}
+                                            >
+                                                {processingId === listing.listing_id ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Swap in progress...</>
+                                                ) : (
+                                                    `Buy ${currentBuyAmount} Token${currentBuyAmount > 1 ? 's' : ''}`
+                                                )}
+                                            </Button>
+                                        )}
                                     </CardFooter>
                                 </Card>
                             );

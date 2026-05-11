@@ -36,6 +36,7 @@ import { getFileUrl } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
 import { Chatbot } from "@/components/Chatbot";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
 // Module-level cache — survives page navigation, clears when backend is hot-reloaded
@@ -53,6 +54,8 @@ export default function RegulatorDashboard() {
     const [reviewComments, setReviewComments] = useState("");
     const [proofFile, setProofFile] = useState<File | null>(null);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [actionSuccess, setActionSuccess] = useState<string | null>(null);
     const { toast } = useToast();
     const [stats, setStats] = useState({
         pendingKYC: 0,
@@ -141,39 +144,32 @@ export default function RegulatorDashboard() {
     const handleApprove = async (item: any, type: "kyc" | "listing") => {
         if (isSubmitting) return;
         setIsSubmitting(true);
+        setActionError(null);
+        setActionSuccess(null);
         try {
             if (type === "kyc") {
                 await api.post("/kyc/approve", { userId: item.user_id });
-                toast({
-                    title: "KYC Approved",
-                    description: `${item.user?.name}'s KYC has been approved.`,
-                });
             } else {
                 const formData = new FormData();
                 formData.append("status", "approved");
                 if (proofFile) formData.append("proof", proofFile);
                 if (reviewComments) formData.append("remarks", reviewComments);
-
                 await api.patch(`/properties/${item.property_id}/verify`, formData, {
                     headers: { "Content-Type": "multipart/form-data" }
                 });
-                toast({
-                    title: "Listing Approved",
-                    description: `${item.title} has been approved for marketplace.`,
-                });
             }
+            toast({
+                title: "Success",
+                description: type === "kyc" ? `${item.user?.name}'s KYC has been approved.` : `${item.title} has been approved.`,
+                className: "bg-primary text-primary-foreground border-none",
+            });
             setReviewModalOpen(false);
             setReviewComments("");
             setProofFile(null);
-            _dashboardCache = null; // Invalidate cache after state change
+            _dashboardCache = null;
             fetchDashboardData();
         } catch (error: any) {
-            console.error("Handle Approve Error:", error);
-            toast({
-                title: "Action Failed",
-                description: error.response?.data?.message || "Failed to approve",
-                variant: "destructive",
-            });
+            setActionError(error.response?.data?.message || "Failed to approve");
         } finally {
             setIsSubmitting(false);
         }
@@ -181,49 +177,37 @@ export default function RegulatorDashboard() {
 
     const handleReject = async (item: any, type: "kyc" | "listing") => {
         if (!reviewComments.trim()) {
-            toast({
-                title: "Comments Required",
-                description: "Please provide a reason for rejection.",
-                variant: "destructive",
-            });
+            setActionError("Please provide a reason for rejection.");
             return;
         }
         if (isSubmitting) return;
         setIsSubmitting(true);
+        setActionError(null);
+        setActionSuccess(null);
         try {
             if (type === "kyc") {
                 await api.post("/kyc/reject", { userId: item.user_id, comments: reviewComments });
-                toast({
-                    title: "KYC Rejected",
-                    description: `${item.user?.name}'s KYC has been rejected.`,
-                    variant: "destructive",
-                });
             } else {
                 const formData = new FormData();
                 formData.append("status", "rejected");
                 formData.append("remarks", reviewComments);
                 if (proofFile) formData.append("proof", proofFile);
-
                 await api.patch(`/properties/${item.property_id}/verify`, formData, {
                     headers: { "Content-Type": "multipart/form-data" }
                 });
-                toast({
-                    title: "Listing Rejected",
-                    description: `${item.title} has been rejected.`,
-                    variant: "destructive",
-                });
             }
+            toast({
+                title: "Action Recorded",
+                description: type === "kyc" ? `${item.user?.name}'s KYC has been rejected.` : `${item.title} has been rejected.`,
+                className: "bg-primary text-primary-foreground border-none",
+            });
             setReviewModalOpen(false);
             setReviewComments("");
             setProofFile(null);
-            _dashboardCache = null; // Invalidate cache after state change
+            _dashboardCache = null;
             fetchDashboardData();
         } catch (error: any) {
-            toast({
-                title: "Action Failed",
-                description: error.response?.data?.message || "Failed to reject",
-                variant: "destructive",
-            });
+            setActionError(error.response?.data?.message || "Failed to reject");
         } finally {
             setIsSubmitting(false);
         }
@@ -232,6 +216,8 @@ export default function RegulatorDashboard() {
     const openReviewModal = (item: any, type: "kyc" | "listing") => {
         setSelectedItem(item);
         setReviewType(type);
+        setActionError(null);
+        setActionSuccess(null);
         setReviewModalOpen(true);
     };
 
@@ -675,6 +661,11 @@ export default function RegulatorDashboard() {
                                     </div>
                                 )}
                             </>
+                        )}
+                        {actionError && (
+                            <Alert variant="destructive" className="mt-4 py-2">
+                                <AlertDescription className="text-xs">{actionError}</AlertDescription>
+                            </Alert>
                         )}
                     </div>
 

@@ -11,75 +11,86 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Navbar } from "@/components/Navbar";
-import { useToast } from "@/hooks/use-toast";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
-
-
+import { loginSchema } from "@/lib/validation";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [mfaCode, setMfaCode] = useState(""); // New State
-    const [showMfaInput, setShowMfaInput] = useState(false); // New State
-
-    const router = useRouter();
-    const { toast } = useToast();
-
+    const [showMfaInput, setShowMfaInput] = useState(false);
+    const [success, setSuccess] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
     const { login } = useAuth();
+    const { toast } = useToast();
 
-    /**
-     * [ACTION] Handle Login
-     */
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        getValues,
+        watch,
+        formState: { errors },
+    } = useForm({
+        resolver: zodResolver(loginSchema),
+        mode: "onBlur",
+        defaultValues: {
+            email: "",
+            password: "",
+            mfaCode: "",
+        },
+    });
+
+    const onSubmit = async (values: any) => {
         setIsLoading(true);
+        // Only clear error if user clicks login again
         setFormError(null);
 
         try {
-            // Include mfaCode if we are in the second step
-            const payload = { email, password, mfaCode: showMfaInput ? mfaCode : undefined };
+            const payload = {
+                email: values.email,
+                password: values.password,
+                mfaCode: showMfaInput ? values.mfaCode : undefined
+            };
 
             const res = await api.post("/auth/login", payload);
 
             if (res.data.mfaRequired) {
                 setShowMfaInput(true);
-                toast({
-                    title: "MFA Required",
-                    description: "Please enter the code from your authenticator app.",
-                });
                 setIsLoading(false);
                 return;
             }
 
-            const { token, user } = res.data;
-
-            login(token, user);
-
             toast({
                 title: "Login Successful",
-                description: `Welcome back, ${user.name}!`,
+                description: "Welcome back! Redirecting to your dashboard...",
+                className: "bg-primary text-primary-foreground border-none",
+                duration: 3000,
             });
+            const { token, user } = res.data;
+            login(token, user);
 
         } catch (error: any) {
             setFormError(error.response?.data?.message || "Invalid credentials. Please try again.");
-            if (showMfaInput) setMfaCode("");
+            if (showMfaInput) setValue("mfaCode", "");
         } finally {
             setIsLoading(false);
         }
     };
 
+    if (success) return null;
+
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background pb-12">
             <Navbar />
             <div className="container mx-auto px-4 py-16 flex items-center justify-center">
                 <Card className="w-full max-w-md animate-scale-in">
@@ -88,17 +99,25 @@ export default function Login() {
                         <CardDescription>Enter your credentials to access your account</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                            {showMfaInput && (
+                                <Alert className="border-accent bg-accent/5 animate-in fade-in duration-500">
+                                    <ShieldAlert className="h-4 w-4 text-accent" />
+                                    <AlertDescription className="text-xs">
+                                        Two-Factor Authentication is enabled. Please enter the 6-digit code from your app.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+
                             {!showMfaInput ? (
                                 <>
                                     <div className="space-y-2">
-                                        <Label htmlFor="email">Email or Username *</Label>
+                                        <Label htmlFor="email">Email *</Label>
                                         <Input
                                             id="email"
-                                            type="text"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            required
+                                            type="email"
+                                            {...register("email")}
+                                            error={errors.email?.message}
                                             disabled={isLoading}
                                             className="h-11"
                                             placeholder="Enter your email"
@@ -115,9 +134,8 @@ export default function Login() {
                                         <Input
                                             id="password"
                                             type="password"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            required
+                                            {...register("password")}
+                                            error={errors.password?.message}
                                             disabled={isLoading}
                                             className="h-11"
                                             placeholder="Enter your password"
@@ -130,9 +148,8 @@ export default function Login() {
                                     <Input
                                         id="mfaCode"
                                         type="text"
-                                        value={mfaCode}
-                                        onChange={(e) => setMfaCode(e.target.value)}
-                                        required
+                                        {...register("mfaCode")}
+                                        error={errors.mfaCode?.message}
                                         disabled={isLoading}
                                         className="h-11 text-center text-lg tracking-widest font-mono"
                                         placeholder="000000"
@@ -143,7 +160,7 @@ export default function Login() {
                                         type="button"
                                         variant="ghost"
                                         className="w-full text-xs text-muted-foreground"
-                                        onClick={() => { setShowMfaInput(false); setMfaCode(""); }}
+                                        onClick={() => { setShowMfaInput(false); setValue("mfaCode", ""); }}
                                     >
                                         Back to Login
                                     </Button>

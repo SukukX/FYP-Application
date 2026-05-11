@@ -22,6 +22,7 @@ interface User {
     created_at?: string | Date;
     kycStatus?: string; // Legacy or alternative
     walletAddress?: string;
+    cnic?: string;
     is_active: boolean;
     rejection_reason?: string;
     is_resubmitted: boolean;
@@ -54,9 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // Fetch user profile if token exists
                     const res = await api.get("/users/profile");
                     setUser(res.data);
-                } catch (error) {
+                } catch (error: any) {
                     console.error("Auth check failed:", error);
-                    Cookies.remove("token");
+                    if (error.response?.status === 404) {
+                        Cookies.remove("token");
+                        setUser(null);
+                    }
                 }
             }
             setLoading(false);
