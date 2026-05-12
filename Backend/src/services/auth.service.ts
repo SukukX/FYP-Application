@@ -153,7 +153,59 @@ export class AuthService {
         return { message: "Email verified successfully!" };
     }
 
+    async requestPasswordReset(email: string) {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            // Safety: don't reveal if user exists or not
+            return { message: "If an account exists with that email, a reset link has been sent." };
+        }
+
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const resetExpires = new Date(Date.now() + 3600000); // 1 hour
+
+        await prisma.user.update({
+            where: { user_id: user.user_id },
+            data: {
+                reset_password_token: resetToken,
+                reset_password_expires: resetExpires
+            }
+        });
+
+        EmailService.sendPasswordResetEmail(user.email, user.name, resetToken).catch(err => {
+            console.error("Failed to send password reset email:", err);
+        });
+
+        return { message: "If an account exists with that email, a reset link has been sent." };
+    }
+
+    async resetPassword(token: string, newPassword: string) {
+        const user = await prisma.user.findFirst({
+            where: {
+                reset_password_token: token,
+                reset_password_expires: { gt: new Date() }
+            }
+        });
+
+        if (!user) {
+            throw new Error("Password reset token is invalid or has expired.");
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await prisma.user.update({
+            where: { user_id: user.user_id },
+            data: {
+                password: hashedPassword,
+                reset_password_token: null,
+                reset_password_expires: null
+            }
+        });
+
+        return { message: "Password has been reset successfully!" };
+    }
+
     async resendVerificationEmail(userId: number) {
+
         const user = await prisma.user.findUnique({ where: { user_id: userId } });
         if (!user) throw new Error("User not found.");
         if (user.is_email_verified) throw new Error("Email is already verified.");
