@@ -24,6 +24,7 @@ interface User {
     walletAddress?: string;
     cnic?: string;
     is_active: boolean;
+    is_email_verified: boolean;
     rejection_reason?: string;
     is_resubmitted: boolean;
     is_email_verified: boolean;

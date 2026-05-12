@@ -160,8 +160,83 @@ export class EmailService {
     }
 
     /**
+     * Sends a password reset email.
+     */
+    static async sendPasswordResetEmail(email: string, name: string, token: string) {
+        const resetLink = `${process.env.FRONTEND_URL}/auth/reset-password?token=${token}`;
+
+        const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+            <style>
+                body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; background-color: #F8FAFC; }
+                .wrapper { width: 100%; background-color: #F8FAFC; padding: 40px 0; }
+                .container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
+                .logo-container { text-align: center; margin-bottom: 40px; }
+                .card { background-color: #FFFFFF; border-radius: 16px; padding: 40px; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+                h1 { font-family: 'Inter', Arial, sans-serif; font-size: 24px; font-weight: 700; color: #0B213B; margin-top: 0; margin-bottom: 24px; }
+                p { font-family: 'Inter', Arial, sans-serif; font-size: 16px; line-height: 26px; color: #475569; margin-top: 0; margin-bottom: 32px; }
+                .btn { display: inline-block; font-family: 'Inter', Arial, sans-serif; background-color: #0B213B; color: #FFFFFF !important; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; text-align: center; }
+                .footer { font-family: 'Inter', Arial, sans-serif; text-align: center; margin-top: 40px; font-size: 14px; color: #94A3B8; }
+                .divider { height: 1px; background-color: #E2E8F0; margin: 32px 0; }
+                .accent { color: #D6B230; font-weight: 600; }
+            </style>
+        </head>
+        <body>
+            <div class="wrapper">
+                <div class="container">
+                    <div class="logo-container">
+                        <a href="${process.env.FRONTEND_URL}" style="text-decoration: none; display: inline-block;">
+                            <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="padding-right: 12px; vertical-align: middle;">
+                                        <img src="https://api.iconify.design/lucide:shield.svg?color=%23D6B230" width="32" height="32" alt="Shield" style="display: block; border: 0;" />
+                                    </td>
+                                    <td style="font-family: 'Inter', Arial, sans-serif; font-size: 28px; font-weight: 800; color: #0B213B; letter-spacing: -1px; vertical-align: middle;">
+                                        Smart Sukuk
+                                    </td>
+                                </tr>
+                            </table>
+                        </a>
+                    </div>
+                    <div class="card">
+                        <h1>Reset Your Password</h1>
+                        <p>Hello <span class="accent">${name}</span>,</p>
+                        <p>We received a request to reset your password for your Smart Sukuk account. If you didn't make this request, you can safely ignore this email.</p>
+                        <div style="text-align: center;">
+                            <a href="${resetLink}" class="btn">Reset Password</a>
+                        </div>
+                        <p style="margin-top: 32px;">This link will expire in <span class="accent">1 hour</span> for your security.</p>
+                        <div class="divider"></div>
+                        <p style="font-size: 14px; color: #64748B; margin-bottom: 0;">If the button above doesn't work, copy and paste this link into your browser:<br>
+                        <span style="color: #0B213B; word-break: break-all;">${resetLink}</span></p>
+                    </div>
+                    <div class="footer">
+                        &copy; 2026 Smart Sukuk. All rights reserved.<br>
+                        Secure Real Estate Tokenization Platform.
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+
+        await transporter.sendMail({
+            from: '"Smart Sukuk" <${process.env.EMAIL_USER}>',
+            to: email,
+            subject: "Reset Your Smart Sukuk Password",
+            html: htmlContent,
+        });
+    }
+
+    /**
      * Sends a contact us message to the support team.
      */
+
     static async sendContactEmail(name: string, email: string, phone: string, message: string) {
         const supportEmail = "smartsukuk50@gmail.com";
         const htmlContent = `
