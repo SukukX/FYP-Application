@@ -20,6 +20,8 @@ import {
     revalueProperty
 } from "../controllers/property.controller";
 import { authenticate, authorize } from "../middleware/auth.middleware";
+import { validate } from "../middleware/validate.middleware";
+import { propertyListingSchema } from "../schemas/validation.schemas";
 
 const router = Router();
 

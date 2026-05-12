@@ -14,6 +14,12 @@ import api from "@/lib/api";
 import { KYCWizard } from "@/components/KYCWizard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
+
 export default function InvestorPanel({ investorData, commonData, onRefresh }: { investorData: any, commonData: any, onRefresh: () => void }) {
 
     const stats = investorData?.stats || { totalInvestment: 0, propertiesOwned: 0, totalTokens: 0, totalYieldEarned: 0 };
@@ -28,7 +34,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
     const [kycModalOpen, setKycModalOpen] = useState(false);
     const [walletModalOpen, setWalletModalOpen] = useState(false);
-    const [walletAddress, setWalletAddress] = useState("");
+    // const [walletAddress, setWalletAddress] = useState("");
 
     const [sellModalOpen, setSellModalOpen] = useState(false);
     const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
@@ -64,38 +70,12 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
     const recentHoldings = [...holdings].sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
 
-    const handleWalletConnect = async () => {
-        if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-            toast({
-                title: "Invalid Address",
-                description: "Please enter a valid Ethereum wallet address.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        try {
-            await api.post("/blockchain/wallet", { wallet: walletAddress });
-            toast({
-                title: "Wallet Connected",
-                description: "Your wallet has been successfully connected.",
-            });
-            setWalletModalOpen(false);
-            onRefresh();
-        } catch (error: any) {
-            toast({
-                title: "Connection Failed",
-                description: error.response?.data?.error || "Failed to connect wallet.",
-                variant: "destructive",
-            });
-        }
-    };
 
     // The missing logic to send data to the backend
     const handleCreateListing = async () => {
+        if (!selectedInvestment || isListing) return;
         setIsListing(true);
         try {
-            // Sends the payload to our new Partial Selling API
             await api.post("/exchange/listings", {
                 sukuk_id: selectedInvestment.sukuk_id,
                 token_amount: parseInt(tokenAmount),
@@ -105,6 +85,7 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
 
             toast({ title: "Success", description: "Tokens listed on the secondary market!" });
             setSellModalOpen(false);
+            setTokenAmount("");
             onRefresh();
         } catch (error: any) {
             toast({
@@ -114,6 +95,57 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             });
         } finally {
             setIsListing(false);
+        }
+    };
+
+    const handleCancelListing = async (listingId: number) => {
+        try {
+            await api.delete(`/exchange/listings/${listingId}`);
+            toast({ title: "Listing Cancelled", description: "Tokens have been unlisted." });
+            onRefresh();
+        } catch (error: any) {
+            toast({ title: "Error", description: "Failed to cancel listing.", variant: "destructive" });
+        }
+    };
+
+    const handleMetaMaskConnect = async () => {
+        // 1. Check if we are safely on the client side AND if MetaMask is installed
+        if (typeof window !== "undefined" && window.ethereum) {
+            try {
+                // 2. This line pops open the MetaMask extension to ask for permission
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+                
+                // 3. Grab the first account the user selected
+                const metaMaskAddress = accounts[0]; 
+                
+                // 4. Send it to your backend
+                await api.post("/blockchain/wallet", { wallet: metaMaskAddress });
+                
+                toast({
+                    title: "MetaMask Connected",
+                    description: `Successfully linked: ${metaMaskAddress.substring(0, 6)}...`,
+                });
+                
+                setWalletModalOpen(false);
+                onRefresh(); // Refresh the dashboard to show the connected state
+                
+            } catch (error: any) {
+                // The user clicked "Reject" on the MetaMask popup
+                toast({
+                    title: "Connection Failed",
+                    description: error.message || "User rejected the MetaMask request.",
+                    variant: "destructive",
+                });
+            }
+        } else {
+            // MetaMask is not installed in their browser
+            toast({
+                title: "MetaMask Not Found",
+                description: "Please install the MetaMask browser extension to continue.",
+                variant: "destructive",
+            });
         }
     };
 
@@ -366,8 +398,10 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                             variant="outline"
                                             className="border-primary/20 hover:border-primary/50"
                                             onClick={() => {
-                                                setSelectedInvestment(inv);
-                                                setPricePerToken("");
+                                                const holding = holdings.find((h: any) => h.sukuk_id === inv.sukuk_id);
+                                                setSelectedInvestment(holding || inv);
+                                                setTokenAmount("");
+                                                setPricePerToken((inv.sukuk?.token_price || 0).toString());
                                                 setSellModalOpen(true);
                                             }}
                                         >
@@ -483,16 +517,33 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
             <KYCWizard open={kycModalOpen} onOpenChange={setKycModalOpen} existingKyc={kycStatus === 'rejected' ? existingKyc : null} onSuccess={() => { onRefresh(); toast({ title: "Submitted", description: "Your KYC was submitted successfully." }); }} />
 
             <Dialog open={walletModalOpen} onOpenChange={setWalletModalOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Connect Your Wallet</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <Label htmlFor="walletAddress">Ethereum Wallet Address</Label>
-                        <Input id="walletAddress" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="0x..." />
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-center">Connect Wallet</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Link your Web3 wallet to receive property tokens and rental yields.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                        <div className="h-16 w-16 bg-orange-500/10 rounded-full flex items-center justify-center mb-2">
+                            {/* MetaMask Fox Icon representation */}
+                            <svg className="w-10 h-10 text-orange-500" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                                <path fill="#E2761B" d="M27.4,14.6l-5.3-4.1l3.5-3.2L27.4,14.6z M4.6,14.6l5.3-4.1l-3.5-3.2L4.6,14.6z M22.1,10.5l-3.4,4.9l4.5,2.1L22.1,10.5z M9.9,10.5l3.4,4.9l-4.5,2.1L9.9,10.5z M16,21.5l-3.6-2l-3.6,5.3L16,25.6l7.2-0.8l-3.6-5.3L16,21.5z M16,11.2l-3.5,4.5l3.5,2.3l3.5-2.3L16,11.2z M24.2,19.3l-1.9-4.7l-4.7-2.1l4.4-6.3l5.5,5.5L24.2,19.3z M7.8,19.3l1.9-4.7l4.7-2.1l-4.4-6.3l-5.5,5.5L7.8,19.3z" />
+                            </svg>
+                        </div>
+                        
+                        <Button 
+                            onClick={handleMetaMaskConnect} 
+                            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-lg h-12"
+                        >
+                            Connect with MetaMask
+                        </Button>
+                        
+                        <p className="text-xs text-muted-foreground text-center px-4 mt-4">
+                            By connecting a wallet, you agree to our platform's Terms of Service and consent to blockchain interaction.
+                        </p>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setWalletModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleWalletConnect}>Connect</Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -510,18 +561,27 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        <div className="grid grid-cols-2 gap-4 p-3 bg-muted/30 rounded-lg border text-sm">
+                            <div className="space-y-1">
+                                <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Owned in Pocket</p>
+                                <p className="text-lg font-bold text-primary">{selectedInvestment?.tokens_owned || 0} Tokens</p>
+                            </div>
+                            <div className="space-y-1 text-right">
+                                <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Currently Listed</p>
+                                <p className="text-lg font-bold text-accent">{selectedInvestment?.listed_tokens || 0} Tokens</p>
+                            </div>
+                        </div>
+
                         {/* 1. QUANTITY INPUT */}
                         <div className="space-y-2">
-                            <div className="flex justify-between">
-                                <Label htmlFor="tokenAmount">Amount to Sell</Label>
-                                <span className="text-xs text-muted-foreground">Owned: {selectedInvestment?.tokens_owned}</span>
-                            </div>
+                            <Label htmlFor="tokenAmount">Amount to Sell (Max: {(selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0)})</Label>
                             <Input
                                 id="tokenAmount"
                                 type="number"
                                 placeholder="Quantity"
                                 value={tokenAmount}
                                 onChange={(e) => setTokenAmount(e.target.value)}
+                                max={(selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0)}
                             />
                         </div>
 
@@ -567,12 +627,32 @@ export default function InvestorPanel({ investorData, commonData, onRefresh }: {
                                 </div>
                             </div>
                         )}
+
+                        {/* ACTIVE LISTINGS */}
+                        {selectedInvestment?.active_secondary_listings?.length > 0 && (
+                            <div className="pt-4 border-t space-y-3">
+                                <h4 className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Active Listings</h4>
+                                <div className="space-y-2">
+                                    {selectedInvestment.active_secondary_listings.map((sl: any) => (
+                                        <div key={sl.listing_id} className="flex items-center justify-between p-2 rounded border bg-background text-xs">
+                                            <div>
+                                                <p className="font-bold">{sl.available_tokens} Tokens @ {sl.price_per_token} PKR</p>
+                                                <p className="text-[10px] text-muted-foreground">Expires: {new Date(sl.expires_at).toLocaleDateString()}</p>
+                                            </div>
+                                            <Button variant="ghost" size="sm" className="h-7 text-destructive hover:bg-destructive/10" onClick={() => handleCancelListing(sl.listing_id)}>
+                                                <XCircle className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setSellModalOpen(false)}>Cancel</Button>
                         <Button
-                            disabled={isListing || !pricePerToken || !tokenAmount || parseInt(tokenAmount) > selectedInvestment?.tokens_owned}
+                            disabled={isListing || !pricePerToken || !tokenAmount || parseInt(tokenAmount) <= 0 || parseInt(tokenAmount) > ((selectedInvestment?.tokens_owned || 0) - (selectedInvestment?.listed_tokens || 0))}
                             onClick={handleCreateListing}
                         >
                             {isListing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

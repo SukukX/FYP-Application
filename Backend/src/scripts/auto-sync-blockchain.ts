@@ -1,137 +1,130 @@
 import prisma from '../config/prisma';
 import * as blockchainService from "../services/blockchain.service";
-import { ethers } from "ethers";
-import { provider } from "../config/blockchain";
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * [HELPER] Faucet: Ensures demo users have ETH for gas
- */
-async function fundWalletIfEmpty(address: string, name: string) {
-    try {
-        const balance = await provider.getBalance(address);
-        const ethBalance = ethers.formatEther(balance);
-
-        if (parseFloat(ethBalance) < 1.0) {
-            console.log(`   💰 [FAUCET] Funding ${name}: ${ethBalance} ETH -> 5.0 ETH`);
-            const signer = await provider.getSigner(0); 
-            const tx = await signer.sendTransaction({
-                to: address,
-                value: ethers.parseEther("5.0")
-            });
-            await tx.wait();
-            console.log(`   ✅ [FAUCET] Sent 5 ETH to ${name}`);
-            await delay(1000);
-        } else {
-            console.log(`   ✓  [FAUCET] ${name} already has ${parseFloat(ethBalance).toFixed(2)} ETH`);
-        }
-    } catch (err: any) {
-        console.error(`   ⚠️  [FAUCET] Could not fund ${name}:`, err.message);
-    }
-}
 
 async function autoSyncBlockchain() {
     try {
-        console.log("\n🔄 [AUTO-SYNC] Starting full state restoration...\n");
+        console.log("\n🔄 [AUTO-SYNC] Starting smart state restoration...\n");
 
-        // STEP 1: Sync Properties & Mint to Owners
-        // FIX: Using snake_case 'wallets' as per your Prisma generated types
+        // ==========================================
+        // STEP 1: Gather & Deduplicate State
+        // ==========================================
         const sukuks = await prisma.sukuk.findMany({
-            include: { 
-                property: { 
-                    include: { 
-                        owner: { 
-                            include: { wallets: { where: { is_primary: true } } } 
-                        } 
-                    } 
-                } 
-            }
+            include: { property: { include: { owner: { include: { wallets: { where: { is_primary: true } } } } } } }
         });
 
-        for (const sukuk of sukuks) {
-            const ownerWallet = sukuk.property.owner.wallets[0];
-            if (!ownerWallet) continue;
-
-            const partitionName = `Sukuk_Asset_${sukuk.property_id}`;
-            console.log(`   🔧 Property: ${sukuk.property.title}`);
-            
-            try {
-                try { await blockchainService.createPartition(partitionName); } catch (e) {}
-                try { await blockchainService.addToWhitelist(ownerWallet.wallet_address); } catch (e) {}
-
-                const balance = await blockchainService.getBalance(partitionName, ownerWallet.wallet_address);
-                if (parseFloat(balance) === 0) {
-                    await blockchainService.issueTokens(partitionName, ownerWallet.wallet_address, sukuk.total_tokens.toString());
-                    console.log(`      ✅ Total tokens minted to owner.`);
-                }
-            } catch (err: any) { 
-                console.log(`      ❌ Property sync failed: ${err.message}`); 
-            }
-        }
-
-        // STEP 2: Restore Gas & Whitelist Investors
-        // FIX: Relation name is likely 'kyc_request' in your schema
-        const investors = await prisma.user.findMany({
-            where: { kyc_request: { status: 'approved' } },
-            include: { wallets: { where: { is_primary: true } } }
-        });
-
-        for (const inv of investors) {
-            const wallet = inv.wallets[0];
-            if (wallet) {
-                await fundWalletIfEmpty(wallet.wallet_address, inv.name);
-                try { await blockchainService.addToWhitelist(wallet.wallet_address); } catch (e) {}
-            }
-        }
-
-        // STEP 3: Restore Individual Token Holdings
-        console.log("\n📈 [AUTO-SYNC] Restoring Token Holdings from Database...\n");
-
-        const allInvestments = await prisma.investment.findMany({
+        const investments = await prisma.investment.findMany({
             include: { 
                 sukuk: { include: { property: { include: { owner: { include: { wallets: { where: { is_primary: true } } } } } } } },
                 investor: { include: { wallets: { where: { is_primary: true } } } }
             }
         });
 
-        for (const inv of allInvestments) {
-            const investorWallet = inv.investor.wallets[0]?.wallet_address;
-            const ownerWalletObj = inv.sukuk.property.owner.wallets[0];
-            
-            if (!investorWallet || !ownerWalletObj) continue;
+        // Using Sets to guarantee we never send duplicate transactions
+        const uniquePartitions = new Set<string>();
+        const uniqueWalletsToWhitelist = new Set<string>();
+        const pendingIssuances = new Map<string, { address: string, amount: number }>();
 
-            const propertyId = inv.sukuk.property_id;
-            const ownerId = inv.sukuk.property.owner_id;
+        // Map Owners
+        sukuks.forEach(s => {
+            const ownerWallet = s.property.owner.wallets[0]?.wallet_address;
+            if (!ownerWallet) return;
 
-            if (inv.investor_id === ownerId) continue;
+            const partition = `Sukuk_Asset_${s.property_id}`;
+            uniquePartitions.add(partition);
+            uniqueWalletsToWhitelist.add(ownerWallet);
+            pendingIssuances.set(partition, { address: ownerWallet, amount: s.total_tokens });
+        });
 
-            const partitionName = `Sukuk_Asset_${propertyId}`;
-            const onChainBal = await blockchainService.getBalance(partitionName, investorWallet);
+        // Map Investors
+        investments.forEach(inv => {
+            const invWallet = inv.investor.wallets[0]?.wallet_address;
+            if (invWallet) uniqueWalletsToWhitelist.add(invWallet);
+        });
 
-            if (parseFloat(onChainBal) === 0 && inv.tokens_owned > 0) {
-                console.log(`   🔗 Restoring ${inv.tokens_owned} tokens for ${inv.investor.name}...`);
-                
-                try {
-                    await blockchainService.transferTokens(
-                        partitionName,
-                        ownerWalletObj.wallet_address, 
-                        investorWallet,
-                        inv.tokens_owned.toString()
-                    );
-                    console.log(`      ✅ Restored.`);
-                } catch (transferErr: any) {
-                    console.log(`      ⚠️  Could not restore tokens for ${inv.investor.name}: ${transferErr.shortMessage || transferErr.message}`);
+        // ==========================================
+        // STEP 2: Execute Phases Sequentially
+        // ==========================================
+
+        // PHASE 1: Whitelist (Done once per unique address)
+        console.log(`🛡️  Checking Whitelists (${uniqueWalletsToWhitelist.size} unique identities)...`);
+        for (const address of uniqueWalletsToWhitelist) {
+            try {
+                await blockchainService.addToWhitelist(address);
+                console.log(`   ✅ Whitelisted: ${address}`);
+                await new Promise(r => setTimeout(r, 500));
+            } catch (e: any) {
+                const msg: string = e?.info?.error?.message || e.message || '';
+                if (msg.toLowerCase().includes('already whitelisted') || msg.includes('revert')) {
+                    console.log(`   ℹ️  Already whitelisted: ${address}`);
+                } else {
+                    console.error(`   ❌ Whitelist failed for ${address}:`, msg);
                 }
-                
-                await delay(2000); // 🟢 Increased delay to 2 seconds to let the local chain breathe
+            }
+        }
+
+        // PHASE 2: Partitions
+        console.log(`\n📦 Checking Partitions (${uniquePartitions.size} unique assets)...`);
+        for (const partition of uniquePartitions) {
+            try {
+                await blockchainService.createPartition(partition);
+                console.log(`   ✅ Created Partition: ${partition}`);
+                await new Promise(r => setTimeout(r, 500));
+            } catch (e: any) {
+                const msg: string = e?.info?.error?.message || e.message || '';
+                if (msg.includes('Partition already exists') || msg.includes('revert')) {
+                    console.log(`   ℹ️  Partition already exists: ${partition}`);
+                } else {
+                    console.error(`   ❌ Partition creation failed for ${partition}:`, msg);
+                }
+            }
+        }
+
+        // PHASE 3: Initial Token Issuance
+        console.log(`\n💎 Checking Initial Supply...`);
+        for (const [partition, data] of pendingIssuances.entries()) {
+            const bal = await blockchainService.getBalance(partition, data.address);
+            
+            // Only issue if the owner has 0 balance to prevent double-minting
+            if (parseFloat(bal) === 0) {
+                try {
+                    await blockchainService.issueTokens(partition, data.address, data.amount.toString());
+                    console.log(`   ✅ Issued ${data.amount} tokens for ${partition}`);
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (e: any) {
+                    console.log(`   ❌ Issue failed for ${partition}:`, e.shortMessage || e.message);
+                }
+            }
+        }
+
+        // PHASE 4: Restore Investor Holdings
+        console.log(`\n🔗 Reconciling Investor Portfolios...`);
+        for (const inv of investments) {
+            const investorWallet = inv.investor.wallets[0]?.wallet_address;
+            const ownerWallet = inv.sukuk.property.owner.wallets[0]?.wallet_address;
+            const ownerId = inv.sukuk.property.owner_id;
+            
+            // Skip if the investor is the owner (they already got their supply in Phase 3)
+            if (!investorWallet || !ownerWallet || inv.investor_id === ownerId) continue;
+
+            const partition = `Sukuk_Asset_${inv.sukuk.property_id}`;
+            const onChainBal = await blockchainService.getBalance(partition, investorWallet);
+
+            // Only transfer if they are missing their tokens on-chain
+            if (parseFloat(onChainBal) === 0 && inv.tokens_owned > 0) {
+                try {
+                    await blockchainService.transferTokens(partition, ownerWallet, investorWallet, inv.tokens_owned.toString());
+                    console.log(`   ✅ Restored ${inv.tokens_owned} tokens for ${inv.investor.name}`);
+                    await new Promise(r => setTimeout(r, 500));
+                } catch (e: any) {
+                    console.log(`   ⚠️ Failed transfer to ${inv.investor.name}:`, e.shortMessage || e.message);
+                }
             }
         }
 
         console.log("\n🎉 [AUTO-SYNC] System is fully synchronized and ready!\n");
 
     } catch (error: any) {
-        console.error("\n❌ [AUTO-SYNC] Sync failed:", error.message);
+        console.error("\n❌ [AUTO-SYNC] Fatal Sync Error:", error.message);
     }
 }
 

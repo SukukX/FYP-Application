@@ -1,0 +1,26 @@
+# Smart Sukuk RAG Chatbot - Dependencies
+# No LangChain / No LlamaIndex — lightweight custom pipeline
+
+# Web Framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+
+# Embeddings (Free, local model)
+sentence-transformers==4.1.0
+torch>=2.0.0
+
+# Vector Store (CPU-only, no GPU required)
+faiss-cpu==1.11.0
+
+# HTTP Client for Ollama Cloud
+httpx==0.28.1
+
+# Data Validation
+pydantic==2.11.4
+pydantic-settings==2.8.1
+
+# Rate Limiting
+slowapi==0.1.9
+
+# CORS
+python-multipart==0.0.20

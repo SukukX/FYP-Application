@@ -12,7 +12,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, ArrowLeft, Loader2, CheckCircle, XCircle, FileText, User, Search, TrendingUp, AlertTriangle, Shield, Activity } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
-import { Chatbot } from "@/components/Chatbot";
 import { Input } from "@/components/ui/input";
 
 export default function AuditLogsPage() {
@@ -312,7 +311,6 @@ export default function AuditLogsPage() {
                     )}
                 </Card>
             </div>
-            <Chatbot />
         </div>
     );
 }

@@ -17,8 +17,13 @@ import {
     Tooltip as ReTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar
 } from "recharts";
 import api from "@/lib/api";
+import { useDashboard } from "@/hooks/use-queries";
+import { useQueryClient } from "@tanstack/react-query";
 import { getFileUrl } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import Image from "next/image";
+import { useAuth } from "@/context/auth-context";
+import { useRouter } from "next/navigation";
 
 const COLORS = [
     "hsl(var(--primary))",
@@ -62,37 +67,37 @@ interface OwnerListing {
 }
 
 export default function UnifiedPortfolio() {
-    const [holdings, setHoldings] = useState<Holding[]>([]);
-    const [listings, setListings] = useState<OwnerListing[]>([]);
-    const [investorStats, setInvestorStats] = useState({ totalInvestment: 0, totalTokens: 0, propertiesOwned: 0 });
-    const [ownerStats, setOwnerStats] = useState({ activeListings: 0, tokensSold: 0, totalRevenue: 0 });
-    const [walletBalance, setWalletBalance] = useState(0);
-    const [portfolioChart, setPortfolioChart] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isRefreshing, setIsRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'investments' | 'properties'>('investments');
     const { toast } = useToast();
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
+    const queryClient = useQueryClient();
+
+    const isReady = !authLoading && !!user;
+    const { data: rawData, isLoading, isError } = useDashboard(isReady);
+
+    // Derive state from cached query
+    const holdings: Holding[] = rawData?.investorData?.holdings || [];
+    const investorStats = rawData?.investorData?.stats || { totalInvestment: 0, totalTokens: 0, propertiesOwned: 0 };
+    const portfolioChart: any[] = rawData?.investorData?.portfolio || [];
+    const listings: OwnerListing[] = rawData?.ownerData?.listings || [];
+    const ownerStats = rawData?.ownerData?.stats || { activeListings: 0, tokensSold: 0, totalRevenue: 0 };
+    const walletBalance: number = rawData?.common?.walletBalance || 0;
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const fetchData = async (silent = false) => {
-        if (!silent) setIsLoading(true);
-        else setIsRefreshing(true);
-        try {
-            const res = await api.get("/dashboard/user");
-            setHoldings(res.data.investorData?.holdings || []);
-            setInvestorStats(res.data.investorData?.stats || { totalInvestment: 0, totalTokens: 0, propertiesOwned: 0 });
-            setPortfolioChart(res.data.investorData?.portfolio || []);
-            setListings(res.data.ownerData?.listings || []);
-            setOwnerStats(res.data.ownerData?.stats || { activeListings: 0, tokensSold: 0, totalRevenue: 0 });
-            setWalletBalance(res.data.common?.walletBalance || 0);
-        } catch {
-            toast({ title: "Error", description: "Could not load portfolio data.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
+        if (silent) setIsRefreshing(true);
+        await queryClient.invalidateQueries({ queryKey: ["dashboard", "user"] });
+        setIsRefreshing(false);
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        if (authLoading) return;
+        if (!user) {
+            router.push("/auth/login?reason=unauthorized");
+            return;
+        }
+    }, [user, authLoading, router]);
 
     // --- Investor calculations ---
     const allocationData = holdings.map((h, i) => ({
@@ -119,7 +124,7 @@ export default function UnifiedPortfolio() {
     const totalCombinedValue = investorStats.totalInvestment + ownerStats.totalRevenue;
 
     // --- Loading skeleton ---
-    if (isLoading) {
+    if (isLoading || authLoading || !user) {
         return (
             <div className="min-h-screen bg-background">
                 <Navbar />
@@ -303,10 +308,18 @@ export default function UnifiedPortfolio() {
                                                     {/* Property Image */}
                                                     <div className="w-32 flex-shrink-0 bg-muted relative overflow-hidden">
                                                         {holding.property_image ? (
-                                                            <img
+                                                            // <img
+                                                            //     src={getFileUrl(holding.property_image)}
+                                                            //     alt={holding.property_title}
+                                                            //     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                            // />
+                                                            <Image
                                                                 src={getFileUrl(holding.property_image)}
                                                                 alt={holding.property_title}
-                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                fill
+                                                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                priority={true}
                                                             />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center">
@@ -524,10 +537,18 @@ export default function UnifiedPortfolio() {
                                                     {/* Image */}
                                                     <div className="w-32 flex-shrink-0 bg-muted relative overflow-hidden">
                                                         {imageDoc ? (
-                                                            <img
+                                                            // <img
+                                                            //     src={getFileUrl(imageDoc.file_path)}
+                                                            //     alt={listing.title}
+                                                            //     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                            // />
+                                                            <Image
                                                                 src={getFileUrl(imageDoc.file_path)}
                                                                 alt={listing.title}
-                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                fill
+                                                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                                                priority={true}
                                                             />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center">
@@ -539,7 +560,7 @@ export default function UnifiedPortfolio() {
                                                                 className="text-[10px] px-1.5"
                                                                 variant={
                                                                     listing.verification_status === 'approved' ? 'default' :
-                                                                    listing.verification_status === 'rejected' ? 'destructive' : 'secondary'
+                                                                        listing.verification_status === 'rejected' ? 'destructive' : 'secondary'
                                                                 }
                                                             >
                                                                 {listing.verification_status}

@@ -207,19 +207,19 @@ export const complianceContacts = [
     name: "Muhammad Maaz Motiwala",
     role: "Chief Compliance Officer",
     phone: "+92 300 0000000",
-    email: "maaz@smartsukuk.com",
+    email: "maaz5503@gmail.com",
   },
   {
     name: "Javeria Motiwala",
     role: "KYC Verification Lead",
     phone: "+92 300 0000001",
-    email: "javeria@smartsukuk.com",
+    email: "javeriamotiwala456@gmail.com",
   },
   {
     name: "Muhammad Ahmed",
     role: "Regulatory Affairs Manager",
     phone: "+92 300 0000002",
-    email: "ahmed@smartsukuk.com",
+    email: "k224725@nu.edu.pk",
   },
 ];
 

@@ -192,29 +192,27 @@ export const createPartition = async (req: Request, res: Response) => {
                 }
             });
 
-            // 2. Create the Owner's Initial Inventory Record
-            // We use 'upsert' here to handle the case where we crashed halfway through DB updates
-            await tx.investment.upsert({
-                where: {
-                    // You need a unique constraint on [investor_id, sukuk_id] in your Schema for this to work perfectly.
-                    // If you don't have one, findFirst + update/create is safer. 
-                    // For now, assuming you handle duplicates or have a unique index:
-                    investment_id: -1 // This won't match, forcing create, unless you have a specific unique key
-                },
-                update: {
-                    tokens_owned: draftSukuk.total_tokens,
-                    tx_hash: txHash
-                },
-                create: {
-                    investor_id: userId,
-                    sukuk_id: draftSukuk.sukuk_id,
-                    tokens_owned: draftSukuk.total_tokens,
-                    purchase_value: 0,
-                    tx_hash: txHash
-                }
+            // 2. Create the Owner's Initial Inventory Record (idempotent: update if already exists)
+            const existingOwnerInv = await tx.investment.findFirst({
+                where: { investor_id: userId, sukuk_id: draftSukuk.sukuk_id }
             });
+            if (existingOwnerInv) {
+                await tx.investment.update({
+                    where: { investment_id: existingOwnerInv.investment_id },
+                    data: { tokens_owned: draftSukuk.total_tokens, tx_hash: txHash }
+                });
+            } else {
+                await tx.investment.create({
+                    data: {
+                        investor_id: userId,
+                        sukuk_id: draftSukuk.sukuk_id,
+                        tokens_owned: draftSukuk.total_tokens,
+                        purchase_value: 0,
+                        tx_hash: txHash
+                    }
+                });
+            }
 
-            // Note: If upsert gives you trouble due to schema, just use .create(). 
             // The transaction rollback protects us mostly, but since we are recovering from a crash,
             // the 'Active' status update is the most critical part.
         });
@@ -560,7 +558,7 @@ export const addWallet = async (req: Request, res: Response) => {
 
         console.log(`[Wallet] Request to link ${wallet} to User ${userId}`);
 
-        if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet" });
+        // if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet" });
 
         const existingWallet = await prisma.wallet.findUnique({
             where: { wallet_address: wallet },

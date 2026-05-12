@@ -26,6 +26,8 @@ model User {
   created_at              DateTime               @default(now())
   updated_at              DateTime               @updatedAt
   fiat_balance            Decimal                @default(100000.00) @db.Decimal(15, 2)
+  is_email_verified       Boolean                @default(false)
+  email_verification_token String?               @db.VarChar(512)
   audit_logs              AuditLog[]
   compliance_verified     ComplianceRecord[]
   documents_verified      Document[]

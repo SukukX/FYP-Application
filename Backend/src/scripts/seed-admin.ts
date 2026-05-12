@@ -6,11 +6,11 @@ import { Role } from "@prisma/client";
  * [SCRIPT] Seed Admin
  * -------------------
  * Ensures the default admin user exists for development/demo purposes.
- * Credentials: admin / admin
+ * Credentials: admin@gmail.com / admin
  */
 const seedAdmin = async () => {
     try {
-        const adminEmail = "admin";
+        const adminEmail = "admin@gmail.com";
         const adminPassword = "admin";
 
         const existingAdmin = await prisma.user.findUnique({

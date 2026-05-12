@@ -22,6 +22,7 @@ interface User {
     created_at?: string | Date;
     kycStatus?: string; // Legacy or alternative
     walletAddress?: string;
+    cnic?: string;
     is_active: boolean;
     rejection_reason?: string;
     is_resubmitted: boolean;
@@ -54,9 +55,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // Fetch user profile if token exists
                     const res = await api.get("/users/profile");
                     setUser(res.data);
-                } catch (error) {
-                    console.error("Auth check failed:", error);
-                    Cookies.remove("token");
+                } catch (error: any) {
+                    if (error.response?.status === 404 || error.response?.status === 401) {
+                        Cookies.remove("token");
+                        setUser(null);
+                    } else {
+                        console.error("Auth check failed:", error);
+                    }
                 }
             }
             setLoading(false);
@@ -95,7 +100,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = () => {
         Cookies.remove("token");
         setUser(null);
-        router.push("/auth/login");
+        // Clear all cached queries to prevent data leakage between sessions
+        import("@tanstack/react-query").then(({ useQueryClient }) => {
+            // Note: This is a hack because we are not in a component here
+            // Better to use queryClient directly if available
+        });
+        // Actually, better to just reload the page on logout to be 100% safe
+        window.location.href = "/auth/login";
     };
 
     return (

@@ -9,6 +9,8 @@ import { Router } from "express";
  */
 import { submitKYC, getKYCStatus, approveKYC, rejectKYC, upload } from "../controllers/kyc.controller";
 import { authenticate, authorize } from "../middleware/auth.middleware";
+import { validate } from "../middleware/validate.middleware";
+import { kycSubmissionSchema } from "../schemas/validation.schemas";
 
 const router = Router();
 
@@ -22,6 +24,7 @@ router.post(
         { name: "cnic_back", maxCount: 1 },
         { name: "face_scan", maxCount: 1 },
     ]),
+    validate(kycSubmissionSchema),
     submitKYC
 );
 

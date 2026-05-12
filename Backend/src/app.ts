@@ -32,6 +32,9 @@ import priceRoutes from "./routes/price.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import exchangeRoutes from "./routes/exchange.routes";
 import adminRoutes from "./routes/admin.routes";
+import chatRoutes from "./routes/chat.routes";
+import contactRoutes from "./routes/contact.routes";
+import fileRoutes from "./routes/file.routes";
 
 const app = express();
 
@@ -56,5 +59,38 @@ app.use("/api/prices", priceRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/exchange",exchangeRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/contact", contactRoutes);
+app.use("/api/files", fileRoutes);
+
+// Global Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    let message = err.message || "An unexpected server error occurred";
+    
+    // Format "File size too large" messages from bytes to MB for better UX
+    if (message.includes("File size too large")) {
+        const bytesRegex = /(\d+)/g;
+        const matches = message.match(bytesRegex);
+        if (matches && matches.length >= 2) {
+            const gotMB = (parseInt(matches[0]) / (1024 * 1024)).toFixed(2);
+            const limitMB = (parseInt(matches[1]) / (1024 * 1024)).toFixed(2);
+            message = `File size too large. Max allowed ${limitMB} MB.`;
+        }
+    }
+
+    console.error("Global Error Log:", {
+        message: message,
+        http_code: err.http_code,
+        details: err
+    });
+
+    const statusCode = err.http_code || err.status || 500;
+    
+    res.status(statusCode).json({ 
+        success: false,
+        message: message, 
+        error: err.name || "InternalError"
+    });
+});
 
 export default app;

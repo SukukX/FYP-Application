@@ -20,12 +20,9 @@ import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Chatbot } from "@/components/Chatbot";
-import api from "@/lib/api";
+import { useMarketplaceListings } from "@/hooks/use-queries";
 
 export default function Marketplace() {
-    const [listings, setListings] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [propertyType, setPropertyType] = useState("all");
 
@@ -36,39 +33,24 @@ export default function Marketplace() {
     const [priceRange, setPriceRange] = useState([0, 100000000]);
     const [tokenRange, setTokenRange] = useState([0, 10000]);
     const [sortBy, setSortBy] = useState("newest");
+    const [initialized, setInitialized] = useState(false);
 
+    const { data: listings = [], isLoading } = useMarketplaceListings() as { data: any[]; isLoading: boolean };
+
+    // Compute dynamic max values when listings arrive
     useEffect(() => {
-        fetchListings();
-    }, []);
-
-    const fetchListings = async () => {
-        try {
-            const res = await api.get("/marketplace");
-            const data = res.data;
-            setListings(data);
-
-            // Calculate dynamic max values
-            if (data.length > 0) {
-                const highestPrice = Math.max(...data.map((l: any) => l.valuation));
-                const highestTokens = Math.max(...data.map((l: any) => l.total_tokens));
-
-                // Add a buffer (e.g. 10%) or round up to nearest significant number
-                const newMaxPrice = Math.ceil(highestPrice * 1.1);
-                const newMaxTokens = Math.ceil(highestTokens * 1.1);
-
-                setMaxPrice(newMaxPrice);
-                setMaxTokens(newMaxTokens);
-
-                // Reset ranges to full breadth of new data
-                setPriceRange([0, newMaxPrice]);
-                setTokenRange([0, newMaxTokens]);
-            }
-        } catch (error) {
-            console.error("Failed to fetch listings:", error);
-        } finally {
-            setIsLoading(false);
+        if (listings.length > 0 && !initialized) {
+            const highestPrice = Math.max(...listings.map((l: any) => l.valuation));
+            const highestTokens = Math.max(...listings.map((l: any) => l.total_tokens));
+            const newMaxPrice = Math.ceil(highestPrice * 1.1);
+            const newMaxTokens = Math.ceil(highestTokens * 1.1);
+            setMaxPrice(newMaxPrice);
+            setMaxTokens(newMaxTokens);
+            setPriceRange([0, newMaxPrice]);
+            setTokenRange([0, newMaxTokens]);
+            setInitialized(true);
         }
-    };
+    }, [listings, initialized]);
 
     const getImageUrl = (path: string) => {
         if (!path) return "";
@@ -296,7 +278,6 @@ export default function Marketplace() {
                 )}
             </div>
 
-            <Chatbot />
         </div>
     );
 }

@@ -1,16 +1,4 @@
 import { Request, Response } from "express";
-/**
- * [MODULE] Property Controller
- * ----------------------------
- * Purpose: Handles business logic for Property management.
- * Key Features:
- * - Property Creation (Draft vs Pending Verification).
- * - Document Uploads (Images/Legal Docs -> Cloudinary).
- * - Verification Workflow (submit -> regulator approve/reject).
- * - Lifecycle Management (Listing Status, Deletion Safety).
- * 
- * DB Interactions: Property, Sukuk, Document, VerificationLog tables.
- */
 import prisma from '../config/prisma';
 import { PropertyType, VerificationStatus, VerificationStatusDoc, ListingStatus, AuditModule, AuditAction, ActorRole } from '@prisma/client';
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -18,20 +6,11 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "../config/cloudinary";
+import { propertyListingSchema } from "../schemas/validation.schemas";
+import { ZodError } from "zod";
 
-
-
-// Configure Multer for Property Documents (Cloudinary)
 export const uploadPropertyDocs = multer({ storage: storage });
 
-/**
- * [ACTION] Create Property
- * Flow:
- * 1. Validates inputs & safely parses numbers.
- * 2. Creates 'Property' record in DB.
- * 3. Creates initial 'Sukuk' record with STRICT MATH ENFORCEMENT.
- * 4. Iterates through uploaded files (Multer) & creates 'Document' records.
- */
 export const createProperty = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.user_id;
@@ -47,9 +26,26 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             property_type,
             valuation,
             total_tokens,
-            tokens_for_sale, // <--- 1. BRING THIS BACK
+            tokens_for_sale,
             isDraft
-        } = req.body; 
+        } = req.body;
+
+        // Apply strict validation only if NOT a draft
+        if (isDraft !== 'true') {
+            try {
+                await propertyListingSchema.parseAsync(req.body);
+            } catch (error: any) {
+                if (error instanceof ZodError || error?.name === 'ZodError') {
+                    res.status(400).json({
+                        success: false,
+                        message: "Validation failed",
+                        errors: error.errors ? error.errors.map((e: any) => ({ field: e.path.join("."), message: e.message })) : error.issues
+                    });
+                    return;
+                }
+                throw error;
+            }
+        }
 
         const safeParseFloat = (val: any) => {
             const parsed = parseFloat(val);
@@ -63,10 +59,7 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
         const parsedValuation = safeParseFloat(valuation);
         const parsedTotalTokens = safeParseInt(total_tokens);
         
-        // 2. Safely parse what the owner wants to sell
         let parsedTokensForSale = safeParseInt(tokens_for_sale);
-        
-        // Safety check: Cannot sell more than total, cannot sell less than 0
         if (parsedTokensForSale <= 0 || parsedTokensForSale > parsedTotalTokens) {
             parsedTokensForSale = parsedTotalTokens; 
         }
@@ -75,29 +68,91 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
             ? (parsedValuation / parsedTotalTokens) 
             : 0;
 
-        const property = await prisma.property.create({
-            data: {
-                owner_id: userId,
-                title: title || "Untitled Draft",
-                location: location || "",
-                description: description || "",
-                property_type: property_type as PropertyType || "commercial",
-                valuation: parsedValuation,
-                verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
-                listing_status: ListingStatus.hidden,
-            },
-        });
-
-        // 3. Create initial Sukuk respecting the owner's public sale choice
-        await prisma.sukuk.create({
-            data: {
-                property_id: property.property_id,
-                total_tokens: parsedTotalTokens,
-                available_tokens: parsedTokensForSale, // <--- FIXED: Only lists what the owner chose
-                token_price: calculatedTokenPrice,
-                status: "active"
+        let property;
+        if (req.body.property_id) {
+            const propertyId = parseInt(req.body.property_id);
+            // Verify ownership
+            const existingProp = await prisma.property.findUnique({ where: { property_id: propertyId }});
+            if (!existingProp || existingProp.owner_id !== userId) {
+                res.status(403).json({ message: "Not authorized to edit this property." });
+                return;
             }
-        });
+
+            property = await prisma.property.update({
+                where: { property_id: propertyId },
+                data: {
+                    title: title || "Untitled Draft",
+                    location: location || "",
+                    description: description || "",
+                    property_type: property_type as PropertyType || "commercial",
+                    valuation: parsedValuation,
+                    verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
+                },
+            });
+
+            // Update or Create Sukuk
+            const existingSukuk = await prisma.sukuk.findFirst({ where: { property_id: propertyId }});
+            if (existingSukuk) {
+                await prisma.sukuk.update({
+                    where: { sukuk_id: existingSukuk.sukuk_id },
+                    data: {
+                        total_tokens: parsedTotalTokens,
+                        available_tokens: parsedTokensForSale,
+                        token_price: calculatedTokenPrice,
+                    }
+                });
+            } else {
+                await prisma.sukuk.create({
+                    data: {
+                        property_id: property.property_id,
+                        total_tokens: parsedTotalTokens,
+                        available_tokens: parsedTokensForSale,
+                        token_price: calculatedTokenPrice,
+                        status: "active"
+                    }
+                });
+            }
+
+            if (req.body.deletedDocumentIds) {
+                try {
+                    const docIdsToDelete = JSON.parse(req.body.deletedDocumentIds);
+                    if (Array.isArray(docIdsToDelete) && docIdsToDelete.length > 0) {
+                        await prisma.document.deleteMany({
+                            where: {
+                                document_id: { in: docIdsToDelete },
+                                property_id: propertyId
+                            }
+                        });
+                    }
+                } catch (e: any) {
+                    console.error("Error parsing deletedDocumentIds:", e.message || e);
+                }
+            }
+        } else {
+            property = await prisma.property.create({
+                data: {
+                    owner_id: userId,
+                    title: title || "Untitled Draft",
+                    location: location || "",
+                    description: description || "",
+                    property_type: property_type as PropertyType || "commercial",
+                    valuation: parsedValuation,
+                    verification_status: isDraft === 'true' ? VerificationStatus.draft : VerificationStatus.pending,
+                    listing_status: ListingStatus.hidden,
+                },
+            });
+
+            await prisma.sukuk.create({
+                data: {
+                    property_id: property.property_id,
+                    total_tokens: parsedTotalTokens,
+                    available_tokens: parsedTokensForSale,
+                    token_price: calculatedTokenPrice,
+                    status: "active"
+                }
+            });
+        }
+
 
         // Handle File Uploads (Images and Documents remain unchanged)
         const files = (req as any).files as { [fieldname: string]: Express.Multer.File[] };
@@ -135,8 +190,25 @@ export const createProperty = async (req: AuthRequest, res: Response) => {
 
         res.status(201).json(property);
     } catch (error: any) {
-        console.error("Create Property Error:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+        console.error("DEBUG: Create Property Failed");
+        console.error("Error Name:", error.name || "Error");
+        console.error("Error Message:", error.message || error);
+        if (error.stack) console.error("Stack Trace:", error.stack);
+        
+        // Log the body and files for debugging
+        try {
+            console.log("Request Body:", JSON.stringify(req.body, null, 2));
+        } catch (e) {
+            console.log("Request Body (non-serializable):", req.body);
+        }
+        console.log("Files received:", req.files ? Object.keys(req.files) : "None");
+
+        res.status(500).json({ 
+            success: false,
+            message: error.message || "Failed to create property", 
+            error: error.name || "InternalError",
+            details: error.name === 'PrismaClientKnownRequestError' ? "Database constraint violation" : undefined
+        });
     }
 };
 
@@ -155,8 +227,13 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "You are not authorized to upload documents for this property." });
             return;
         }
 
@@ -203,9 +280,9 @@ export const uploadDocuments = async (req: AuthRequest, res: Response) => {
         }
 
         res.json({ message: "Files uploaded successfully", documents: uploadedDocs });
-    } catch (error) {
-        console.error("Upload Documents Error:", error);
-        res.status(500).json({ message: "Server error" });
+    } catch (error: any) {
+        console.error("Upload Documents Error:", error.message || error);
+        res.status(500).json({ success: false, message: error.message || "Failed to upload documents", error: error.message });
     }
 };
 
@@ -219,8 +296,18 @@ export const submitForVerification = async (req: AuthRequest, res: Response) => 
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            console.error(`[Submit] Property ${propertyId} not found.`);
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            console.error(`[Submit] Ownership mismatch. Property Owner: ${property.owner_id}, Current User: ${userId}`);
+            res.status(403).json({ 
+                message: "You are not authorized to submit this property.",
+                debug: process.env.NODE_ENV === 'development' ? { propertyOwner: property.owner_id, currentUser: userId } : undefined
+            });
             return;
         }
 
@@ -262,9 +349,9 @@ export const submitForVerification = async (req: AuthRequest, res: Response) => 
             message: isResubmission ? "Property resubmitted for verification" : "Property submitted for verification",
             property: updated
         });
-    } catch (error) {
-        console.error("Submit Verification Error:", error);
-        res.status(500).json({ message: "Server error" });
+    } catch (error: any) {
+        console.error("Submit Verification Error:", error.message || error);
+        res.status(500).json({ success: false, message: error.message || "Failed to submit for verification", error: error.message });
     }
 };
 
@@ -535,8 +622,13 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
             where: { property_id: propertyId },
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to update this listing's status." });
             return;
         }
 
@@ -570,12 +662,13 @@ export const updateListingStatus = async (req: AuthRequest, res: Response) => {
     }
 };
 
+
 /**
  * [ACTION] Delete Property
  * Guard Rails: CRITICAL SAFETY CHECK
  * - Checks if any investments exist (tokens sold).
  * - If tokens sold -> REJECT deletion (Force 'unlive' instead).
- * - If safe -> Cascading delete (Logs -> Sukuk -> Documents -> Property).
+ * - If safe -> Cascading delete wrapped in a Prisma Transaction.
  */
 export const deleteProperty = async (req: AuthRequest, res: Response) => {
     try {
@@ -589,11 +682,16 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
 
         const property = await prisma.property.findUnique({
             where: { property_id: propertyId },
-            include: { sukuks: true } // Include sukuks to check token status
+            include: { sukuks: true } 
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to delete this property." });
             return;
         }
 
@@ -605,26 +703,35 @@ export const deleteProperty = async (req: AuthRequest, res: Response) => {
             });
 
             if (investmentCount > 0) {
-                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold to investors. Please unlive the listing instead." });
+                res.status(400).json({ message: "Cannot delete property: Tokens have already been sold. Please unlive the listing instead." });
                 return;
             }
         }
 
-        // Delete related records first
-        // Note: In a production app with proper cascade delete in DB, this might be simpler.
-        // But here we manually clean up to be safe.
-        await prisma.verificationLog.deleteMany({ where: { property_id: propertyId } });
-        await prisma.sukuk.deleteMany({ where: { property_id: propertyId } });
-        await prisma.document.deleteMany({ where: { property_id: propertyId } });
+        // Extract Sukuk IDs to clean up nested relations (like TokenPriceHistory)
+        const sukukIds = property.sukuks.map(s => s.sukuk_id);
 
-        await prisma.property.delete({
-            where: { property_id: propertyId },
-        });
+        // BULLETPROOF CASCADE DELETE: Wrap everything in a transaction.
+        // If one fails, they ALL revert. No ghost data.
+        await prisma.$transaction([
+            // 1. Clean up deepest nested relations first
+            prisma.tokenPriceHistory.deleteMany({ where: { sukuk_id: { in: sukukIds } } }),
+            
+            // 2. Clean up direct Property relations
+            prisma.rentPayment.deleteMany({ where: { property_id: propertyId } }),
+            prisma.listingUpdateRequest.deleteMany({ where: { property_id: propertyId } }),
+            prisma.verificationLog.deleteMany({ where: { property_id: propertyId } }),
+            prisma.document.deleteMany({ where: { property_id: propertyId } }),
+            prisma.sukuk.deleteMany({ where: { property_id: propertyId } }),
+            
+            // 3. Finally, delete the parent property
+            prisma.property.delete({ where: { property_id: propertyId } })
+        ]);
 
         res.json({ message: "Property deleted successfully" });
     } catch (error) {
         console.error("Delete Property Error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Server error during deletion." });
     }
 };
 
@@ -644,8 +751,13 @@ export const updateTokenSupply = async (req: AuthRequest, res: Response) => {
             include: { sukuks: true }
         });
 
-        if (!property || property.owner_id !== userId) {
-            res.status(404).json({ message: "Property not found or unauthorized" });
+        if (!property) {
+            res.status(404).json({ message: "Property not found." });
+            return;
+        }
+
+        if (Number(property.owner_id) !== Number(userId)) {
+            res.status(403).json({ message: "Not authorized to update this listing's token supply." });
             return;
         }
 

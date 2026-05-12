@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Navbar } from "@/components/Navbar";
-import { Chatbot } from "@/components/Chatbot";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,39 +10,43 @@ import { Loader2, ArrowRightLeft, Building, Tag, Clock } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useExchangeListings } from "@/hooks/use-queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function SecondaryMarketExchange() {
-    const [listings, setListings] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
     // NEW: Track how many tokens the user wants to buy for each listing
     const [buyAmounts, setBuyAmounts] = useState<Record<number, number>>({});
     
     const { toast } = useToast();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
+    const queryClient = useQueryClient();
 
-    const fetchListings = async () => {
-        try {
-            const res = await api.get("/exchange/listings");
-            setListings(res.data);
-            
-            // Initialize the buy amounts to 1 for every fetched listing
+    const isReady = !authLoading && !!user;
+    const { data: listings = [], isLoading: loading } = useExchangeListings(isReady) as { data: any[]; isLoading: boolean };
+
+    // Initialize buy amounts when listings change
+    useEffect(() => {
+        if (listings.length > 0) {
             const initialAmounts: Record<number, number> = {};
-            res.data.forEach((l: any) => {
-                initialAmounts[l.listing_id] = 1;
+            listings.forEach((l: any) => {
+                initialAmounts[l.listing_id] = buyAmounts[l.listing_id] || 1;
             });
             setBuyAmounts(initialAmounts);
-        } catch (error) {
-            console.error("Failed to fetch listings:", error);
-            toast({ title: "Error", description: "Could not load the secondary market.", variant: "destructive" });
-        } finally {
-            setLoading(false);
         }
-    };
+    }, [listings]);
+
+    const fetchListings = () => queryClient.invalidateQueries({ queryKey: ["exchange", "listings"] });
 
     useEffect(() => {
-        fetchListings();
-    }, []);
+        if (authLoading) return;
+        if (!user) {
+            router.push("/auth/login?reason=unauthorized");
+            return;
+        }
+    }, [user, authLoading, router]);
 
     // NEW: Handle the partial buy amount changes safely
     const handleAmountChange = (listingId: number, value: number, maxAvailable: number) => {
@@ -73,6 +76,26 @@ export default function SecondaryMarketExchange() {
             toast({
                 title: "Trade Failed",
                 description: error.response?.data?.message || "Something went wrong.",
+                variant: "destructive",
+            });
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const handleCancelListing = async (listingId: number) => {
+        setProcessingId(listingId);
+        try {
+            await api.delete(`/exchange/listings/${listingId}`);
+            toast({
+                title: "Listing Cancelled",
+                description: "Your tokens have been removed from the exchange.",
+            });
+            fetchListings();
+        } catch (error: any) {
+            toast({
+                title: "Cancellation Failed",
+                description: "Could not remove listing.",
                 variant: "destructive",
             });
         } finally {
@@ -182,21 +205,34 @@ export default function SecondaryMarketExchange() {
                                             </Button>
                                         </Link>
 
-                                        <Button 
-                                            className="w-full" 
-                                            size="lg"
-                                            disabled={isOwnListing || processingId === listing.listing_id || availableTokens === 0}
-                                            onClick={() => handleBuy(listing.listing_id)}
-                                            variant={isOwnListing ? "secondary" : "default"}
-                                        >
-                                            {processingId === listing.listing_id ? (
-                                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Swap in progress...</>
-                                            ) : isOwnListing ? (
-                                                "Your Listing"
-                                            ) : (
-                                                `Buy ${currentBuyAmount} Token${currentBuyAmount > 1 ? 's' : ''}`
-                                            )}
-                                        </Button>
+                                        {isOwnListing ? (
+                                            <Button 
+                                                className="w-full border-destructive text-destructive hover:bg-destructive/10" 
+                                                variant="outline"
+                                                size="lg"
+                                                disabled={processingId === listing.listing_id}
+                                                onClick={() => handleCancelListing(listing.listing_id)}
+                                            >
+                                                {processingId === listing.listing_id ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelling...</>
+                                                ) : (
+                                                    "Cancel Listing"
+                                                )}
+                                            </Button>
+                                        ) : (
+                                            <Button 
+                                                className="w-full" 
+                                                size="lg"
+                                                disabled={processingId === listing.listing_id || availableTokens === 0}
+                                                onClick={() => handleBuy(listing.listing_id)}
+                                            >
+                                                {processingId === listing.listing_id ? (
+                                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Swap in progress...</>
+                                                ) : (
+                                                    `Buy ${currentBuyAmount} Token${currentBuyAmount > 1 ? 's' : ''}`
+                                                )}
+                                            </Button>
+                                        )}
                                     </CardFooter>
                                 </Card>
                             );
@@ -204,7 +240,6 @@ export default function SecondaryMarketExchange() {
                     </div>
                 )}
             </div>
-            <Chatbot />
         </div>
     );
 }

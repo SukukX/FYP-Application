@@ -6,18 +6,41 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { complianceContacts } from "@/lib/mockData";
-import { Mail, Phone, MapPin } from "lucide-react";
+import { Mail, Phone, MapPin, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import api from "@/lib/api";
 
 export default function Contact() {
     const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState({ name: "", email: "", phone: "", message: "" });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        toast({
-            title: "Message Sent",
-            description: "Thank you for contacting us. We'll respond within 24 hours.",
-        });
+        try {
+            setIsLoading(true);
+            await api.post("/contact", formData);
+            
+            toast({
+                title: "Message Sent",
+                description: "Thank you for contacting us. We'll respond within 24 hours.",
+                className: "bg-green-500 text-white border-none",
+            });
+            setFormData({ name: "", email: "", phone: "", message: "" }); // Reset form
+        } catch (error: any) {
+            toast({
+                title: "Delivery Failed",
+                description: error.response?.data?.message || "Could not send your message. Please try again.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -39,21 +62,23 @@ export default function Contact() {
                                 <form onSubmit={handleSubmit} className="space-y-4">
                                     <div>
                                         <label className="text-sm font-medium mb-2 block">Full Name</label>
-                                        <Input placeholder="Enter your name" required />
+                                        <Input name="name" value={formData.name} onChange={handleChange} placeholder="Enter your name" required disabled={isLoading} />
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium mb-2 block">Email Address</label>
-                                        <Input type="email" placeholder="your.email@example.com" required />
+                                        <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="your.email@example.com" required disabled={isLoading} />
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium mb-2 block">Phone Number</label>
-                                        <Input type="tel" placeholder="+92 300 0000000" />
+                                        <Input name="phone" type="tel" value={formData.phone} onChange={handleChange} placeholder="+92 300 0000000" disabled={isLoading} />
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium mb-2 block">Message</label>
-                                        <Textarea placeholder="How can we help you?" rows={5} required />
+                                        <Textarea name="message" value={formData.message} onChange={handleChange} placeholder="How can we help you?" rows={5} required disabled={isLoading} />
                                     </div>
-                                    <Button type="submit" className="w-full">Send Message</Button>
+                                    <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</> : "Send Message"}
+                                    </Button>
                                 </form>
                             </CardContent>
                         </Card>
@@ -79,7 +104,7 @@ export default function Contact() {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <Mail className="h-5 w-5 text-muted-foreground" />
-                                        <a href="mailto:info@smartsukuk.com" className="hover:text-primary">info@smartsukuk.com</a>
+                                        <a href="mailto:smartsukuk50@gmail.com" className="hover:text-primary">smartsukuk50@gmail.com</a>
                                     </div>
                                 </CardContent>
                             </Card>

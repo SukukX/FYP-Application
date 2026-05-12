@@ -6,46 +6,24 @@ import { ethers } from "ethers";
 import { provider } from "../config/blockchain";
 
 
-// [HELPER] Smart Alerts System
-const getCommonAlerts = async (userId: number) => {
+// [HELPER] Build alerts from already-fetched KYC and MFA records (no extra DB calls)
+const buildAlerts = (kyc: { status: string; rejection_reason?: string | null } | null, mfaEnabled: boolean, isEmailVerified: boolean) => {
     const alerts = [];
 
-    const kyc = await prisma.kYCRequest.findUnique({
-        where: { user_id: userId },
-    });
-
-    if (!kyc) {
-        alerts.push({
-            type: "warning",
-            message: "Complete your KYC verification to start investing.",
-            action: "/kyc",
-        });
-    } else if (kyc.status === KYCStatus.rejected) {
-        alerts.push({
-            type: "error",
-            title: "KYC Application Rejected",
-            message: kyc.rejection_reason || "Check your documents.",
-            footer: "Please resubmit your application.",
-            action: "/kyc",
-        });
-    } else if (kyc.status === KYCStatus.pending) {
-        alerts.push({
-            type: "info",
-            message: "Your KYC is under review.",
-            action: "/kyc",
-        });
+    if (!isEmailVerified) {
+        alerts.push({ type: "warning", title: "Email Not Verified", message: "Please check your inbox to verify your email address. Some features may be restricted until verified.", action: "/settings/profile" });
     }
 
-    const mfa = await prisma.mFASetting.findUnique({
-        where: { user_id: userId },
-    });
+    if (!kyc) {
+        alerts.push({ type: "warning", message: "Complete your KYC verification to start investing.", action: "/kyc" });
+    } else if (kyc.status === KYCStatus.rejected) {
+        alerts.push({ type: "error", title: "KYC Application Rejected", message: kyc.rejection_reason || "Check your documents.", footer: "Please resubmit your application.", action: "/kyc" });
+    } else if (kyc.status === KYCStatus.pending) {
+        alerts.push({ type: "info", message: "Your KYC is under review.", action: "/kyc" });
+    }
 
-    if (!mfa || !mfa.is_enabled) {
-        alerts.push({
-            type: "info",
-            message: "Enable 2FA for better security.",
-            action: "/settings/security",
-        });
+    if (!mfaEnabled) {
+        alerts.push({ type: "info", message: "Enable 2FA for better security.", action: "/settings/security" });
     }
 
     return alerts;
@@ -64,16 +42,31 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             return;
         }
 
-        // 1. Fetch Common Global Data
-        const alerts = await getCommonAlerts(userId);
-        const wallet = await prisma.wallet.findFirst({
-            where: { user_id: userId, is_primary: true }
-        });
-        const user = await prisma.user.findUnique({
+        // 1. Fetch Common Global Data — single query replacing 5 individual ones
+        const userData = await prisma.user.findUnique({
             where: { user_id: userId },
+            include: {
+                kyc_request: true,
+                mfa_setting: true,
+                wallets: { where: { is_primary: true }, take: 1 }
+            }
         });
-        const kycRecord = await prisma.kYCRequest.findUnique({ where: { user_id: userId } });
-        const mfaEnabled = (await prisma.mFASetting.findUnique({ where: { user_id: userId } }))?.is_enabled || false;
+        if (!userData) { res.status(404).json({ message: "User not found" }); return; }
+
+        const kycRecord = userData.kyc_request;
+        const mfaEnabled = userData.mfa_setting?.is_enabled || false;
+        const wallet = userData.wallets[0] || null;
+        const alerts = buildAlerts(kycRecord, mfaEnabled, !!userData.is_email_verified);
+
+        const [ownerInvestments, userSecondaryListings] = await Promise.all([
+            prisma.investment.findMany({
+                where: { investor_id: userId, sukuk: { property: { owner_id: userId } } }
+            }),
+            prisma.secondaryListing.findMany({
+                where: { seller_id: userId, status: "open" },
+                include: { sukuk: true }
+            })
+        ]);
 
         // ==========================================
         // 2. Fetch & Calculate OWNER Data
@@ -110,12 +103,19 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 totalRevenue += soldForSukuk * parseFloat(sukuk.token_price.toString());
             }
 
+            const mySecondaryListings = userSecondaryListings.filter(sl => sl.sukuk_id === sukuk?.sukuk_id);
+            const listedTokens = mySecondaryListings.reduce((sum, sl) => sum + sl.available_tokens, 0);
+            const ownerInv = ownerInvestments.find(inv => inv.sukuk_id === sukuk?.sukuk_id);
+
             return {
                 ...p,
                 total_tokens: sukuk ? sukuk.total_tokens : 0,
                 tokens_available: sukuk ? sukuk.available_tokens : 0,
                 tokens_sold: soldForSukuk,
                 token_price: sukuk ? sukuk.token_price : 0,
+                owned_tokens: ownerInv ? ownerInv.tokens_owned : 0,
+                listed_tokens: listedTokens,
+                active_secondary_listings: mySecondaryListings
             };
         });
 
@@ -204,6 +204,10 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
             const currentValue = inv.tokens_owned * currentPrice;
             const profitLoss = currentValue - purchaseValue;
             const profitLossPct = purchaseValue > 0 ? ((profitLoss / purchaseValue) * 100) : 0;
+
+            const mySecondaryListings = userSecondaryListings.filter(sl => sl.sukuk_id === sukuk?.sukuk_id);
+            const listedTokens = mySecondaryListings.reduce((sum, sl) => sum + sl.available_tokens, 0);
+
             return {
                 investment_id: inv.investment_id,
                 property_id: sukuk.property_id,
@@ -219,6 +223,8 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
                 profit_loss: profitLoss,
                 profit_loss_pct: profitLossPct,
                 purchase_date: inv.purchase_date,
+                listed_tokens: listedTokens,
+                active_secondary_listings: mySecondaryListings
             };
         });
 
@@ -234,7 +240,7 @@ export const getUserDashboard = async (req: AuthRequest, res: Response) => {
         //         console.error("Failed to fetch wallet balance via ethers:", err);
         //     }
         // }
-        const liveWalletBalance = user?.fiat_balance || 0;
+        const liveWalletBalance = userData?.fiat_balance || 0;
 
 
         res.json({
@@ -288,17 +294,16 @@ export const getRegulatorDashboard = async (req: AuthRequest, res: Response) => 
             return;
         }
 
-        const pendingKYC = await prisma.kYCRequest.count({ where: { status: KYCStatus.pending } });
-        const pendingListings = await prisma.property.count({ where: { verification_status: "pending" } });
+        const [pendingKYC, pendingListings, totalUsers, approvedUsers, activeSukuks, approvedListings] = await Promise.all([
+            prisma.kYCRequest.count({ where: { status: KYCStatus.pending } }),
+            prisma.property.count({ where: { verification_status: "pending" } }),
+            prisma.user.count(),
+            prisma.user.count({ where: { role: "user", kyc_request: { status: "approved" } } }),
+            prisma.sukuk.count({ where: { status: "active" } }),
+            prisma.property.count({ where: { verification_status: "approved" } }),
+        ]);
 
-        const stats = {
-            pendingKYC,
-            pendingListings,
-            totalUsers: await prisma.user.count(),
-            approvedUsers: await prisma.user.count({ where: { role: "user", kyc_request: { status: "approved" } } }),
-            activeSukuks: await prisma.sukuk.count({ where: { status: "active" } }),
-            approvedListings: await prisma.property.count({ where: { verification_status: "approved" } }),
-        };
+        const stats = { pendingKYC, pendingListings, totalUsers, approvedUsers, activeSukuks, approvedListings };
 
         // Fetch Queues with is_resubmission flag
         const rawKycQueue = await prisma.kYCRequest.findMany({

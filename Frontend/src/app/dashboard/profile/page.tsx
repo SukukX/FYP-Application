@@ -23,12 +23,24 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import api from "@/lib/api";
-import { Loader2, Camera, Shield, Wallet, User, Lock, ExternalLink, Link as LinkIcon, Trash2, AlertTriangle, XCircle } from "lucide-react";
+import { Loader2, Camera, Shield, Wallet, User, Lock, ExternalLink, Link as LinkIcon, Trash2, AlertTriangle, XCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { passwordSchema } from "@/lib/validation";
+import { z } from "zod";
+
+const profileSchema = z.object({
+    name: z.string().min(2, "Name must be at least 2 characters"),
+    phone_number: z.string().regex(/^\+?[\d\s-]{10,15}$/, "Invalid phone format").optional().or(z.literal("")),
+    country: z.string().optional(),
+    address: z.string().optional(),
+    dob: z.string().optional(),
+});
 
 export default function ProfilePage() {
-    const { user, setUser } = useAuth();
+    const { user, setUser, logout } = useAuth();
     const { toast } = useToast();
     const router = useRouter();
 
@@ -73,6 +85,50 @@ export default function ProfilePage() {
     const [deleteMfaToken, setDeleteMfaToken] = useState("");
     const [managementError, setManagementError] = useState<string | null>(null);
 
+    // Password Form
+    const {
+        register: registerPass,
+        handleSubmit: handleSubmitPass,
+        watch: watchPass,
+        reset: resetPass,
+        formState: { errors: errorsPass },
+    } = useForm({
+        resolver: zodResolver(z.object({
+            currentPassword: z.string().min(1, "Current password required"),
+            newPassword: passwordSchema,
+            confirmPassword: z.string(),
+        }).refine(data => data.newPassword === data.confirmPassword, {
+            message: "Passwords do not match",
+            path: ["confirmPassword"]
+        })),
+    });
+
+    const [passSuccess, setPassSuccess] = useState(false);
+    const [passError, setPassError] = useState<string | null>(null);
+
+    const onPassSubmit = async (values: any) => {
+        setPasswordLoading(true);
+        setPassError(null);
+        setPassSuccess(false);
+        try {
+            await api.put("/users/password", {
+                currentPassword: values.currentPassword,
+                newPassword: values.newPassword,
+            });
+            toast({
+                title: "Password Updated",
+                description: "Your password has been changed successfully.",
+                className: "bg-primary text-primary-foreground border-none",
+            });
+            resetPass();
+            setIsPasswordDialogOpen(false);
+        } catch (error: any) {
+            setPassError(error.response?.data?.message || "Failed to update password");
+        } finally {
+            setPasswordLoading(false);
+        }
+    };
+
 
 
     useEffect(() => {
@@ -93,21 +149,39 @@ export default function ProfilePage() {
         setFormData((prev) => ({ ...prev, [id]: value }));
     };
 
-    const handleSaveChanges = async () => {
+    const {
+        register,
+        handleSubmit,
+        reset,
+        formState: { errors },
+    } = useForm({
+        resolver: zodResolver(profileSchema),
+        defaultValues: {
+            name: user?.name || "",
+            phone_number: user?.phone_number || "",
+            country: user?.country || "",
+            address: user?.address || "",
+            dob: user?.dob ? new Date(user.dob).toISOString().split('T')[0] : "",
+        },
+    });
+
+    const [profileSuccess, setProfileSuccess] = useState(false);
+    const [profileError, setProfileError] = useState<string | null>(null);
+
+    const onProfileSubmit = async (values: any) => {
         setIsSaving(true);
+        setProfileError(null);
+        setProfileSuccess(false);
         try {
-            const res = await api.patch("/users/profile", formData);
-            setUser({ ...user, ...res.data }); // Update context
+            const res = await api.patch("/users/profile", values);
+            setUser({ ...user, ...res.data });
             toast({
                 title: "Profile Updated",
-                description: "Your profile information has been saved successfully.",
+                description: "Your personal details have been saved.",
+                className: "bg-primary text-primary-foreground border-none",
             });
         } catch (error: any) {
-            toast({
-                title: "Update Failed",
-                description: error.response?.data?.message || "Failed to update profile",
-                variant: "destructive",
-            });
+            setProfileError(error.response?.data?.message || "Failed to update profile");
         } finally {
             setIsSaving(false);
         }
@@ -420,8 +494,7 @@ export default function ProfilePage() {
                 description: "Your profile and associated data have been permanently removed.",
             });
             setTimeout(() => {
-                sessionStorage.clear();
-                localStorage.clear();
+                logout();
                 window.location.href = "/";
             }, 2000);
         } catch (error: any) {
@@ -510,36 +583,46 @@ export default function ProfilePage() {
                                     <CardTitle>Personal Information</CardTitle>
                                     <CardDescription>Update your personal details here.</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="name">Full Name</Label>
-                                            <Input id="name" value={formData.name} onChange={handleInputChange} />
+                                <CardContent>
+                                    <form onSubmit={handleSubmit(onProfileSubmit)} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="name">Full Name</Label>
+                                                <Input id="name" {...register("name")} error={errors.name?.message} />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="dob">Date of Birth</Label>
+                                                <Input id="dob" type="date" {...register("dob")} error={errors.dob?.message} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="phone_number">Phone Number</Label>
+                                                <Input id="phone_number" {...register("phone_number")} error={errors.phone_number?.message} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="country">Country</Label>
+                                                <Input id="country" {...register("country")} error={errors.country?.message} />
+                                            </div>
+                                            <div className="space-y-2 md:col-span-2">
+                                                <Label htmlFor="address">Address</Label>
+                                                <Input id="address" {...register("address")} error={errors.address?.message} />
+                                            </div>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <Label htmlFor="dob">Date of Birth</Label>
-                                            <Input id="dob" type="date" value={formData.dob} onChange={handleInputChange} />
+
+                                        {profileError && (
+                                            <Alert variant="destructive" className="py-2">
+                                                <AlertDescription>{profileError}</AlertDescription>
+                                            </Alert>
+                                        )}
+
+                                        <div className="flex justify-end pt-4">
+                                            <Button type="submit" disabled={isSaving}>
+                                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                Save Changes
+                                            </Button>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="phone_number">Phone Number</Label>
-                                            <Input id="phone_number" value={formData.phone_number} onChange={handleInputChange} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="country">Country</Label>
-                                            <Input id="country" value={formData.country} onChange={handleInputChange} />
-                                        </div>
-                                        <div className="space-y-2 md:col-span-2">
-                                            <Label htmlFor="address">Address</Label>
-                                            <Input id="address" value={formData.address} onChange={handleInputChange} />
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end pt-4">
-                                        <Button onClick={handleSaveChanges} disabled={isSaving}>
-                                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            Save Changes
-                                        </Button>
-                                    </div>
+                                    </form>
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -579,14 +662,14 @@ export default function ProfilePage() {
                                                         Enter your current password and a new password below.
                                                     </DialogDescription>
                                                 </DialogHeader>
-                                                <div className="space-y-4 py-4">
+                                                <form onSubmit={handleSubmitPass(onPassSubmit)} className="space-y-4 py-4">
                                                     <div className="space-y-2">
                                                         <Label htmlFor="current-password">Current Password</Label>
                                                         <Input
                                                             id="current-password"
                                                             type="password"
-                                                            value={passwordData.currentPassword}
-                                                            onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                                                            {...registerPass("currentPassword")}
+                                                            error={errorsPass.currentPassword?.message}
                                                         />
                                                     </div>
                                                     <div className="space-y-2">
@@ -594,8 +677,8 @@ export default function ProfilePage() {
                                                         <Input
                                                             id="new-password"
                                                             type="password"
-                                                            value={passwordData.newPassword}
-                                                            onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                                            {...registerPass("newPassword")}
+                                                            error={errorsPass.newPassword?.message}
                                                         />
                                                     </div>
                                                     <div className="space-y-2">
@@ -603,18 +686,26 @@ export default function ProfilePage() {
                                                         <Input
                                                             id="confirm-password"
                                                             type="password"
-                                                            value={passwordData.confirmPassword}
-                                                            onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                                            {...registerPass("confirmPassword")}
+                                                            error={errorsPass.confirmPassword?.message}
                                                         />
                                                     </div>
-                                                </div>
-                                                <DialogFooter>
-                                                    <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>Cancel</Button>
-                                                    <Button onClick={handlePasswordChange} disabled={passwordLoading}>
-                                                        {passwordLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                        Update Password
-                                                    </Button>
-                                                </DialogFooter>
+
+
+                                                    {passError && (
+                                                        <Alert variant="destructive" className="py-2">
+                                                            <AlertDescription>{passError}</AlertDescription>
+                                                        </Alert>
+                                                    )}
+
+                                                    <DialogFooter>
+                                                        <Button type="button" variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>Cancel</Button>
+                                                        <Button type="submit" disabled={passwordLoading}>
+                                                            {passwordLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                            Update Password
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </form>
                                             </DialogContent>
                                         </Dialog>
                                     </div>

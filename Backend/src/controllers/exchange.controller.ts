@@ -43,13 +43,13 @@ export const createListing = async (req: AuthRequest, res: Response) => {
         const activeListings = await prisma.secondaryListing.findMany({
             where: { seller_id: sellerId, sukuk_id: parseInt(sukuk_id), status: "open" }
         });
-        
+
         const lockedTokens = activeListings.reduce((sum, listing) => sum + listing.available_tokens, 0);
         const availableTokensToList = investment.tokens_owned - lockedTokens;
 
         if (availableTokensToList < amountToStart) {
-            return res.status(400).json({ 
-                message: `You only have ${availableTokensToList} unlocked tokens available to list.` 
+            return res.status(400).json({
+                message: `You only have ${availableTokensToList} unlocked tokens available to list.`
             });
         }
 
@@ -84,14 +84,14 @@ export const createListing = async (req: AuthRequest, res: Response) => {
 export const getMarketplaceListings = async (req: AuthRequest, res: Response) => {
     try {
         const listings = await prisma.secondaryListing.findMany({
-            where: { 
+            where: {
                 status: "open",
                 available_tokens: { gt: 0 },
                 expires_at: { gt: new Date() } // Hide expired listings
             },
             include: {
                 sukuk: {
-                    include: { property: { include: { documents: true } } }
+                    include: { property: { select: { property_id: true, title: true, location: true, property_type: true } } }
                 },
                 seller: { select: { name: true } }
             },
@@ -147,7 +147,7 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
         // Check Buyer's Fiat Balance
         const buyer = await prisma.user.findUnique({ where: { user_id: buyerId } });
         const totalCost = tokensToBuy * parseFloat(listing.price_per_token.toString());
-        
+
         if (parseFloat(buyer!.fiat_balance.toString()) < totalCost) {
             return res.status(400).json({ message: `Insufficient funds. You need PKR ${totalCost}. You have ${buyer!.fiat_balance}` });
         }
@@ -196,9 +196,9 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
             const newAvailable = listing.available_tokens - tokensToBuy;
             await tx.secondaryListing.update({
                 where: { listing_id: listingId },
-                data: { 
+                data: {
                     available_tokens: newAvailable,
-                    status: newAvailable === 0 ? "completed" : "open" 
+                    status: newAvailable === 0 ? "completed" : "open"
                 }
             });
 
@@ -231,25 +231,69 @@ export const executeTrade = async (req: AuthRequest, res: Response) => {
                     }
                 });
             }
-            
+
             // E. Log the transaction
             await tx.transactionLog.create({
                 data: {
                     user_id: buyerId,
-                    type: "buy", 
+                    type: "buy",
                     amount: totalCost,
                     status: "success",
                     tx_hash: txHash
                 }
             });
-        }, { timeout: 20000 }); 
+        }, { timeout: 20000 });
 
-        res.json({ 
-            message: `Successfully purchased ${tokensToBuy} tokens for PKR ${totalCost}!`, 
-            txHash 
+        res.json({
+            message: `Successfully purchased ${tokensToBuy} tokens for PKR ${totalCost}!`,
+            txHash
         });
     } catch (error: any) {
         console.error("Execute Trade Error:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };
+
+/**
+ * [DELETE] Cancel Secondary Market Listing
+ */
+export const cancelListing = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.user_id;
+        const listingId = parseInt(req.params.id);
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const listing = await prisma.secondaryListing.findUnique({
+            where: { listing_id: listingId }
+        });
+
+        if (!listing) {
+            res.status(404).json({ message: "Listing not found" });
+            return;
+        }
+
+        if (listing.seller_id !== userId) {
+            res.status(403).json({ message: "You can only cancel your own listings." });
+            return;
+        }
+
+        if (listing.status !== "open") {
+            res.status(400).json({ message: "This listing is no longer open." });
+            return;
+        }
+
+        await prisma.secondaryListing.update({
+            where: { listing_id: listingId },
+            data: { status: "cancelled" }
+        });
+
+        res.json({ message: "Listing cancelled successfully." });
+    } catch (error: any) {
+        console.error("Cancel Listing Error:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
