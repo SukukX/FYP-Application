@@ -141,10 +141,10 @@ def ingest_knowledge_base() -> dict:
     }
 
 if __name__ == "__main__":
-    print("🚀 Starting knowledge base ingestion...")
+    print("Starting knowledge base ingestion...")
     result = ingest_knowledge_base()
     if result["status"] == "success":
-        print(f"✅ Ingestion complete. Processed {result['files_processed']} files, {result['total_chunks']} chunks.")
+        print(f"Ingestion complete. Processed {result['files_processed']} files, {result['total_chunks']} chunks.")
     else:
-        print(f"❌ Ingestion failed: {result.get('message')}")
+        print(f"Ingestion failed: {result.get('message')}")
 
