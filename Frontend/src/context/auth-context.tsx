@@ -26,6 +26,7 @@ interface User {
     is_active: boolean;
     rejection_reason?: string;
     is_resubmitted: boolean;
+    is_email_verified: boolean;
     mfa_setting?: {
         is_enabled: boolean;
     };
