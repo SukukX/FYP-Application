@@ -47,10 +47,16 @@ export const storage = new CloudinaryStorage({
             }
         }
 
+        // Determine if file should be private
+        let uploadType = 'upload'; // Default to public
+        if (['documents', 'proof', 'cnic_front', 'cnic_back', 'face_scan'].includes(file.fieldname)) {
+            uploadType = 'private';
+        }
+
         return {
             folder: folderName,
             resource_type: resourceType,
-            type: 'upload', // Explicitly public
+            type: uploadType,
             public_id: finalPublicId,
             format: format,
         };

@@ -18,7 +18,10 @@ export const authenticate = async (
   next: NextFunction
 ) => {
   try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+    let token = req.header("Authorization")?.replace("Bearer ", "");
+    if (!token && req.query.token) {
+        token = req.query.token as string;
+    }
 
     if (!token) {
       res.status(401).json({ message: "Authentication required" });
@@ -49,7 +52,10 @@ export const optionalAuth = async (
   next: NextFunction
 ) => {
   try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+    let token = req.header("Authorization")?.replace("Bearer ", "");
+    if (!token && req.query.token) {
+        token = req.query.token as string;
+    }
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as {
