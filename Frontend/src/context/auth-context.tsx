@@ -56,10 +56,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const res = await api.get("/users/profile");
                     setUser(res.data);
                 } catch (error: any) {
-                    console.error("Auth check failed:", error);
-                    if (error.response?.status === 404) {
+                    if (error.response?.status === 404 || error.response?.status === 401) {
                         Cookies.remove("token");
                         setUser(null);
+                    } else {
+                        console.error("Auth check failed:", error);
                     }
                 }
             }

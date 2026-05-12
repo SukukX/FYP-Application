@@ -42,7 +42,6 @@ export default function Terms() {
                                     <li>Be at least 18 years of age</li>
                                     <li>Hold valid Pakistani citizenship or authorized residency</li>
                                     <li>Complete NADRA-verified KYC authentication</li>
-                                    <li>Provide biometric verification (fingerprint and live selfie)</li>
                                     <li>Be whitelisted by the Regulator Node before trading</li>
                                 </ul>
                             </section>
@@ -113,7 +112,7 @@ export default function Terms() {
                             <section>
                                 <h2 className="text-2xl font-semibold text-primary mb-3">Contact Information</h2>
                                 <p className="text-muted-foreground">
-                                    For questions regarding these Terms and Conditions, please contact our compliance team at compliance@smartsukuk.com or +92 300 0000000.
+                                    For questions regarding these Terms and Conditions, please contact our compliance team at smartsukuk50@gmail.com or +92 300 0000000.
                                 </p>
                             </section>
                         </CardContent>

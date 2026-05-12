@@ -40,7 +40,7 @@ const profileSchema = z.object({
 });
 
 export default function ProfilePage() {
-    const { user, setUser } = useAuth();
+    const { user, setUser, logout } = useAuth();
     const { toast } = useToast();
     const router = useRouter();
 
@@ -494,8 +494,7 @@ export default function ProfilePage() {
                 description: "Your profile and associated data have been permanently removed.",
             });
             setTimeout(() => {
-                sessionStorage.clear();
-                localStorage.clear();
+                logout();
                 window.location.href = "/";
             }, 2000);
         } catch (error: any) {
