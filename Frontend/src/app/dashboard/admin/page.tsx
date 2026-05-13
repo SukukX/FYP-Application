@@ -33,6 +33,7 @@ import { getFileUrl } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
+import { EmailVerificationBlocker } from "@/components/EmailVerificationBlocker";
 
 export default function AdminDashboard() {
     const { user, loading: authLoading } = useAuth();
@@ -175,6 +176,15 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-center h-[calc(100vh-64px)]">
                     <Loader2 className="h-8 w-8 animate-spin text-accent" />
                 </div>
+            </div>
+        );
+    }
+
+    if (!user?.is_email_verified) {
+        return (
+            <div className="min-h-screen bg-background">
+                <Navbar />
+                <EmailVerificationBlocker />
             </div>
         );
     }

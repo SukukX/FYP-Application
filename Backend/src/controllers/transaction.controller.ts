@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import prisma from '../config/prisma';
-
+import { Prisma } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import * as blockchainService from "../services/blockchain.service";
 
+const Decimal = Prisma.Decimal;
 
 const getPartitionName = (propertyId: number) => `Sukuk_Asset_${propertyId}`;
 
@@ -50,15 +51,16 @@ export const buyTokens = async (req: AuthRequest, res: Response) => {
             where: { user_id: property.owner_id, is_primary: true }
         });
         if (!ownerWallet) return res.status(500).json({ message: "Owner wallet not configured" });
-        const investor_balance = investor?.fiat_balance || 0;
-        const owner_balance = owner?.fiat_balance || 0;
+        
+        const investor_balance = investor?.fiat_balance || new Decimal(0);
 
         // 4. Calculate Price
-        const totalPriceExcludingFee = (Number(sukuk.token_price) * amount);
-        const totalPrice = (Number(sukuk.token_price) * amount) * 1.02;
+        const tokenPrice = new Decimal(sukuk.token_price);
+        const totalPriceExcludingFee = tokenPrice.mul(amount);
+        const totalPrice = totalPriceExcludingFee.mul(1.02);
 
-        if (investor_balance < totalPrice) {
-            return res.status(400).json({ message: `Insufficient balance. Your current balance is ${investor_balance} PKR and you need ${totalPrice} PKR` });
+        if (new Decimal(investor_balance).lessThan(totalPrice)) {
+            return res.status(400).json({ message: `Insufficient balance. Your current balance is ${investor_balance} PKR and you need ${totalPrice.toFixed(2)} PKR` });
         }
 
         console.log(`[BUY] Investor ${investorId} buying ${amount} tokens of Property ${propertyId}`);

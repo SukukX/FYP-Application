@@ -103,7 +103,7 @@ export const reviewPriceUpdate = async (
             // E. Notify Owner
             await tx.notification.create({
                 data: {
-                    user_id: request.owner_id,
+                    user_id: request.owner_id as number,
                     type: "system",
                     message: `Your price update request for ${request.property.title} was APPROVED.`
                 }
@@ -127,7 +127,7 @@ export const reviewPriceUpdate = async (
         // Notify Owner
         await prisma.notification.create({
             data: {
-                user_id: request.owner_id,
+                user_id: request.owner_id as number,
                 type: "system",
                 message: `Your price update request for ${request.property.title} was REJECTED. Reason: ${comments}`
             }
