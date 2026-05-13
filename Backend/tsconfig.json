@@ -10,7 +10,7 @@
 
     /* ===== Node + Express environment ===== */
     "lib": ["ES2020"],
-    /* "types": ["node","jest"], */
+    "types": ["node","jest"],
 
     /* ===== Type Safety ===== */
     "strict": true,
