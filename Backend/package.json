@@ -9,8 +9,8 @@
     "test": "jest",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "build:full": "npm install && npx prisma generate && npm run build && cd chatbot && python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt",
-    "start": "node dist/server.js",
+    "build:full": "npm run build && cd chatbot && python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt",
+    "start": "node dist/src/server.js",
     "prisma:deploy": "npx prisma migrate deploy"
   },
   "keywords": [],
