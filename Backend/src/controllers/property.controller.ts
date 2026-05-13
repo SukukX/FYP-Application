@@ -433,7 +433,7 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
         // ======================================================
         // TOKENIZATION LOGIC (Only if Approving)
         // ======================================================
-        let blockchainTxHash = null;
+        let blockchainTxHash = "RECOVERED_STATE_NO_HASH"; // Default fallback
 
         if (status === "approved") {
             try {
@@ -460,19 +460,34 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                 } catch (err: any) {
                     const msg = err?.info?.error?.message || err.message || "";
                     if (!msg.includes("Partition already exists") && !msg.includes("revert")) {
-                        throw err; // Real error
+                        throw err; 
                     }
-                    console.log("[Verify] Partition already exists, proceeding to mint.");
+                    console.log("[Verify] Partition already exists. Moving to next step.");
                 }
 
-                // 3. Issue Tokens (Mint to Owner)
-                blockchainTxHash = await blockchainService.issueTokens(
-                    partitionName,
-                    ownerWallet.wallet_address,
-                    sukuk.total_tokens.toString()
-                );
+                // 3. Guarantee Owner is Whitelisted (Crucial for receiving tokens)
+                try {
+                    await blockchainService.addToWhitelist(ownerWallet.wallet_address);
+                } catch (err: any) {
+                    console.log("[Verify] Owner already whitelisted or whitelist check bypassed.");
+                }
 
-                console.log(`[Verify] Minted ${sukuk.total_tokens} tokens. Hash: ${blockchainTxHash}`);
+                // 4. The Balance Check (Prevents Double-Minting)
+                const currentBalance = await blockchainService.getBalance(partitionName, ownerWallet.wallet_address);
+                
+                if (parseFloat(currentBalance) === 0) {
+                    // Safe to mint!
+                    blockchainTxHash = await blockchainService.issueTokens(
+                        partitionName,
+                        ownerWallet.wallet_address,
+                        sukuk.total_tokens.toString()
+                    );
+                    console.log(`[Verify] Minted ${sukuk.total_tokens} tokens. Hash: ${blockchainTxHash}`);
+                } else {
+                    // Recovery state: Tokens are already sitting on the blockchain from a previous crashed attempt
+                    console.warn(`[Verify] Recovery: ${currentBalance} tokens already exist on-chain for ${partitionName}. Skipping mint.`);
+                    // We leave blockchainTxHash as "RECOVERED_STATE_NO_HASH" so the database logic still completes.
+                }
 
             } catch (bcdError: any) {
                 console.error("Blockchain Tokenization Failed:", bcdError);
@@ -482,7 +497,6 @@ export const verifyProperty = async (req: AuthRequest, res: Response) => {
                 });
             }
         }
-
         // ======================================================
         // DB UPDATE (Transaction)
         // ======================================================

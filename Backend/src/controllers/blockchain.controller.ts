@@ -579,7 +579,7 @@ export const addWallet = async (req: Request, res: Response) => {
             data: {
                 user_id: userId,
                 wallet_address: wallet,
-                chain_id: 31337,
+                chain_id: Number(process.env.CHAIN_ID) || 11155111,
                 is_primary: true
             }
         });
